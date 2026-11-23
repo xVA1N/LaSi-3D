@@ -4,20 +4,24 @@ Ladungssicherung am Lkw in 3D: Beispiele durchgehen, Zurrarten vergleichen und d
 
 ## Stand
 
-- 3D-Ansicht einer Sattelauflieger-Pritsche (13,6 × 2,48 m) mit Stirnwand, drehen und zoomen mit Maus oder zwei Fingern
-- Beispiel **Niederzurren**: Ladung, Reibpaarung und Zurrgurt wählen; die Seite berechnet die nötige Anzahl Gurte je Richtung (vorwärts, rückwärts, seitlich), den Zurrwinkel aus der Geometrie, prüft das Kippen und zeigt den Rechenweg
-- Die Gurte erscheinen in der berechneten Anzahl auf der Ladung
+- **Fahrzeuge:** Sattelauflieger (13,6 m), Motorwagen (7,3 m), kleiner Lkw bis 7,5 t (6,2 m), jeweils mit Stirnwand, Außenrahmen mit Zurrpunkten und Rungen
+- **Ladegut selbst platzieren:** Holzkiste, Gitterbox, IBC, Fass, Papierrolle, Kunststoffkisten, Mauersteine. Antippen wählt aus, Ziehen verschiebt (rastet an Stirnwand, Bordwand und Nachbarn ein), Drehen 90°, Kopieren, Löschen; Masse, Maße, Material und μ einstellbar
+- **Hilfsmittel:** Europalette und Antirutschmatte (RHM) platzieren; Ladung, die auf eine Palette oder Matte gezogen wird, steht darauf und wird mit ihr bewegt
+- **Zurrgurte (Niederzurren):** frei setzen und verschieben; Vorspannkraft S_TF und LC je Gurt selbst festlegen, Ratsche auf einer oder beiden Seiten (k = 1,5 / 2)
+- **Prüfung je Ladeeinheit:** vorwärts, rückwärts, seitlich (Auslastung in %), Formschluss an der Stirnwand (auch über davorstehende Ladung) mit Last auf die Stirnwand, Kippen quer und längs; Hinweise bei Überschneidung, Überstand, Gurt ohne Ladung und S_TF über 0,5 · LC. Gesicherte Ladung hat einen grünen, ungesicherte einen roten Umriss
+- **Beispiele** je Fahrzeug; die Beladung bleibt im Browser gespeichert
 
-Gerechnet wird nach dem Verfahren der EN 12195-1:2010 (Beschleunigungsbeiwerte Straße: vorwärts 0,8, rückwärts und seitlich 0,5, Kippen seitlich 0,6; Sicherheitsbeiwert Niederzurren 1,25 vorwärts, sonst 1,1; k = 1,5 oder 2). Die Reibbeiwerte in `src/daten.js` sind Richtwerte. Die Seite ist eine Lernhilfe, keine geprüfte Software für den Einsatz.
+Gerechnet wird nach dem Verfahren der EN 12195-1:2010 (Beschleunigungsbeiwerte Straße: vorwärts 0,8, rückwärts und seitlich 0,5, Kippen seitlich 0,6; Sicherheitsbeiwert Niederzurren 1,25 vorwärts, sonst 1,1). Vereinfachungen: Ein Stapel (z. B. Palette mit Ladung) wird als eine Einheit mit dem kleinsten Reibbeiwert aller Fugen gerechnet; ein Gurt über mehrere Einheiten teilt seine Wirkung gleichmäßig; Rundes wird für Überschneidungen als Quadrat gerechnet; die Stirnwand trägt höchstens 5000 daN. Die Reibbeiwerte in `src/modell.js` sind Richtwerte. Die Seite ist eine Lernhilfe, keine geprüfte Software für den Einsatz.
 
 ## Dateien
 
 | Datei | Inhalt |
 | --- | --- |
-| `src/berechnung.js` | Formeln (reine Funktionen, ohne Browser testbar) |
-| `src/daten.js` | Reibpaarungen, Zurrmittel, Beispielladungen, Maße der Ladefläche |
-| `src/main.js` | 3D-Szene (three.js) und Bedienung |
-| `test/berechnung.test.js` | Rechentests mit von Hand nachgerechneten Beispielen |
+| `src/modell.js` | Stapeln, Ladeeinheiten, Gurte, Prüfung der ganzen Beladung |
+| `src/berechnung.js` | Grundformeln und Beiwerte nach EN 12195-1 |
+| `src/daten.js` | Fahrzeuge, Ladegut, Hilfsmittel, Gurttypen, Beispiele |
+| `src/main.js` | 3D-Szene (three.js), Ziehen und Bedienfeld |
+| `test/*.test.js` | Rechentests mit von Hand nachgerechneten Beispielen |
 | `test/seite.e2e.js` | Seitentest im Browser (Playwright) |
 
 ## Entwickeln
@@ -35,7 +39,7 @@ npm run build && (npm run preview -- --port 4173 &) && npm run e2e   # Seitentes
 
 ## Nächste Schritte
 
-- Direktzurren (Diagonal- und Schrägzurren) mit LC und Zurrwinkeln α/β
-- Formschluss an der Stirnwand, Kombination mit Niederzurren
-- Kippen mit Niederzurren absichern, mehrere Ladungsstücke
-- Weitere Ladungsgüter (Coils, Rollen, Fässer, Fahrzeuge) und Fahrzeugarten
+- Direktzurren (Diagonal-, Schräg- und Kopfschlingen) mit LC und Zurrwinkeln α/β, Gurte frei zwischen Zurrpunkten spannen
+- Formschluss nach hinten und zur Seite (Rungen, Bordwände, Füllmittel wie Luftkissen oder Leerpaletten)
+- Liegende Rollen mit Keilen, Coils, Fahrzeuge
+- Gurtschoner/Kantenschutz, Zwischenwandverschluss, Sperrbalken

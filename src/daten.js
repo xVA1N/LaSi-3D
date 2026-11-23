@@ -1,26 +1,59 @@
-// Auswahllisten für die Beispiele.
-// Die Reibbeiwerte sind übliche Richtwerte. Maßgeblich sind die Tabellen der
-// EN 12195-1 (Anhang B) oder ein Zertifikat für die konkrete Paarung.
+// Kataloge für den Editor. Maße in m, Massen in kg, Kräfte in daN.
+// Reibbeiwerte stehen in src/modell.js (REIBWERTE) und sind Richtwerte.
 
-export const REIBPAARUNGEN = [
-  { id: 'rhm', name: 'Antirutschmatte (RHM) unter der Ladung', mu: 0.6 },
-  { id: 'holz-sperrholz', name: 'Schnittholz auf Sperrholz/Siebdruck', mu: 0.45 },
-  { id: 'holz-holz-glatt', name: 'Gehobeltes Holz auf Holz', mu: 0.3 },
-  { id: 'stahl-holz', name: 'Stahlkiste auf Sperrholz', mu: 0.3 },
-  { id: 'kunststoff', name: 'Kunststoffpalette auf Sperrholz', mu: 0.2 },
+export const FAHRZEUGE = [
+  { id: 'sattel', name: 'Sattelauflieger, Pritsche/Plane (13,6 m)', laenge: 13.6, breite: 2.48, hoehe: 1.2, achsen: [-4.4, -3.1, -1.8], haus: false, rungen: 6 },
+  { id: 'motorwagen', name: 'Motorwagen (7,3 m)', laenge: 7.3, breite: 2.48, hoehe: 1.15, achsen: [-2.2, -0.9], haus: true, rungen: 4 },
+  { id: 'klein', name: 'Kleiner Lkw bis 7,5 t (6,2 m)', laenge: 6.2, breite: 2.4, hoehe: 1.0, achsen: [-1.2], haus: true, rungen: 0 },
 ];
 
-export const ZURRGURTE = [
-  { id: 'gurt-ratsche', name: 'Zurrgurt, Standardratsche (S_TF 250 daN)', stf: 250, lc: 2500 },
-  { id: 'gurt-langhebel', name: 'Zurrgurt, Langhebelratsche (S_TF 500 daN)', stf: 500, lc: 2500 },
-  { id: 'gurt-ergo', name: 'Zurrgurt, Zugratsche (S_TF 750 daN)', stf: 750, lc: 2500 },
+export const LADEGUT = [
+  { art: 'holzkiste', name: 'Holzkiste', form: 'quader', material: 'holz', masse: 800, l: 1.2, b: 1.0, h: 1.0 },
+  { art: 'gitterbox', name: 'Gitterbox', form: 'quader', material: 'stahl', masse: 450, l: 1.24, b: 0.835, h: 0.97 },
+  { art: 'ibc', name: 'IBC 1000 l, gefüllt', form: 'quader', material: 'stahl', masse: 1050, l: 1.2, b: 1.0, h: 1.16 },
+  { art: 'fass', name: 'Fass 200 l', form: 'zylinder', material: 'stahl', masse: 220, l: 0.6, b: 0.6, h: 0.9 },
+  { art: 'papierrolle', name: 'Papierrolle, stehend', form: 'zylinder', material: 'papier', masse: 1500, l: 1.2, b: 1.2, h: 1.4 },
+  { art: 'kunststoffkisten', name: 'Kunststoffkisten, gestapelt', form: 'quader', material: 'kunststoff', masse: 300, l: 1.2, b: 0.8, h: 1.0 },
+  { art: 'mauersteine', name: 'Mauersteine, Paket', form: 'quader', material: 'stein', masse: 1000, l: 1.2, b: 0.8, h: 1.0 },
 ];
 
-export const LADUNGEN = [
-  { id: 'kiste', name: 'Holzkiste', masse: 1200, laenge: 1.2, breite: 1.0, hoehe: 1.0 },
-  { id: 'palette', name: 'Europalette mit Kartons', masse: 600, laenge: 1.2, breite: 0.8, hoehe: 1.4 },
-  { id: 'maschine', name: 'Maschine auf Kufen', masse: 3000, laenge: 2.0, breite: 1.2, hoehe: 1.6 },
+export const HILFSMITTEL = [
+  { art: 'europalette', typ: 'palette', name: 'Europalette', form: 'quader', material: 'holz', masse: 25, l: 1.2, b: 0.8, h: 0.144 },
+  { art: 'rhm', typ: 'rhm', name: 'Antirutschmatte (RHM)', form: 'quader', material: 'rhm', masse: 0, l: 1.2, b: 0.8, h: 0.008 },
 ];
 
-// Sattelauflieger-Pritsche
-export const LADEFLAECHE = { laenge: 13.6, breite: 2.48, hoehe: 1.2 };
+export const GURTTYPEN = [
+  { id: 'standard', name: 'Zurrgurt, Standardratsche', stf: 250, lc: 2500 },
+  { id: 'langhebel', name: 'Zurrgurt, Langhebelratsche', stf: 500, lc: 2500 },
+  { id: 'zug', name: 'Zurrgurt, Zugratsche', stf: 750, lc: 2500 },
+];
+
+export const MATERIALIEN = { holz: 'Holz', stahl: 'Stahl', kunststoff: 'Kunststoff', papier: 'Papier', stein: 'Stein/Folie' };
+
+// Beispiele zum Laden; x und z beziehen sich auf die Mitte der Ladefläche
+export function beispiel(fahrzeugId) {
+  const objekte = [], gurte = [];
+  let n = 0;
+  const neu = (vorlage, x, z, drehung = 0) => { const o = { ...vorlage, typ: vorlage.typ ?? 'ladung', id: `o${++n}`, x, z, drehung }; objekte.push(o); return o; };
+  const vorlage = (art) => LADEGUT.find((v) => v.art === art) ?? HILFSMITTEL.find((v) => v.art === art);
+  if (fahrzeugId === 'sattel') {
+    // vier Reihen Mauersteine auf Paletten quer, an die Stirnwand geschoben, je Reihe ein Gurt
+    for (let i = 0; i < 4; i++) {
+      const x = 6.8 - 0.4 - i * 0.8;
+      for (const z of [-0.62, 0.62]) { neu(vorlage('europalette'), x, z, 90); neu(vorlage('mauersteine'), x, z, 90); }
+      gurte.push({ id: `g${i + 1}`, x, stf: 500, lc: 2500, zweiRatschen: false });
+    }
+    neu(vorlage('rhm'), -1.5, 0, 0);
+    const rolle = neu(vorlage('papierrolle'), -1.5, 0);
+    gurte.push({ id: 'g5', x: rolle.x - 0.3, stf: 500, lc: 2500, zweiRatschen: false }, { id: 'g6', x: rolle.x + 0.3, stf: 500, lc: 2500, zweiRatschen: false });
+  } else {
+    const vorne = fahrzeugId === 'klein' ? 3.1 : 3.65;
+    for (const z of [-0.55, 0.55]) { neu({ ...vorlage('rhm'), l: 1.2, b: 1.0 }, vorne - 0.6, z); neu(vorlage('ibc'), vorne - 0.6, z); }
+    gurte.push({ id: 'g1', x: vorne - 0.6, stf: 500, lc: 2500, zweiRatschen: false });
+    const x = vorne - 1.2 - 0.6;
+    neu(vorlage('europalette'), x, -0.55); neu(vorlage('fass'), x - 0.3, -0.55); neu(vorlage('fass'), x + 0.3, -0.55);
+    neu(vorlage('europalette'), x, 0.55); neu(vorlage('fass'), x - 0.3, 0.55); neu(vorlage('fass'), x + 0.3, 0.55);
+    gurte.push({ id: 'g2', x: x - 0.3, stf: 250, lc: 2500, zweiRatschen: false }, { id: 'g3', x: x + 0.3, stf: 250, lc: 2500, zweiRatschen: false });
+  }
+  return { objekte, gurte };
+}
