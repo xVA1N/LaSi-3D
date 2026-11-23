@@ -1,0 +1,32 @@
+:root {
+  --hg: #f4f5f2; --text: #1d2420; --leise: #5b6660; --karte: #fff; --rand: #d6dbd5;
+  --gut: #2f7d4a; --schlecht: #b3382c; --akzent: #d98b1c;
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --hg: #151917; --text: #e7ebe8; --leise: #9aa59f; --karte: #1f2522; --rand: #333c37; --gut: #6cc58a; --schlecht: #f0806f; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; font: 16px/1.45 system-ui, sans-serif; background: var(--hg); color: var(--text); }
+.layout { display: grid; grid-template-columns: 1fr 340px; height: 100dvh; }
+#szene { position: relative; min-height: 0; }
+#szene canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+.panel { overflow: auto; padding: 16px; background: var(--karte); border-left: 1px solid var(--rand); }
+h1 { margin: 0; font-size: 1.4rem; }
+.unter { margin: 0 0 12px; color: var(--leise); }
+label { display: block; margin: 0 0 10px; font-size: .9rem; color: var(--leise); }
+select, input[type=number] { display: block; width: 100%; margin-top: 4px; padding: 8px; font: inherit; color: var(--text); background: var(--hg); border: 1px solid var(--rand); border-radius: 8px; }
+.reihe { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.haken { display: flex; gap: 8px; align-items: center; color: var(--text); }
+.ergebnis { margin: 12px 0; padding: 12px; border-radius: 10px; background: var(--hg); }
+.ergebnis .gross { font-size: 1.6rem; font-weight: 700; }
+.ergebnis table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: .9rem; }
+.ergebnis td { padding: 3px 0; }
+.ergebnis td:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+.gut { color: var(--gut); } .schlecht { color: var(--schlecht); }
+details { font-size: .85rem; } #rechenweg p { margin: 6px 0; font-variant-numeric: tabular-nums; }
+.hinweis { font-size: .8rem; color: var(--leise); }
+@media (max-width: 760px) {
+  .layout { grid-template-columns: 1fr; grid-template-rows: 45dvh auto; height: auto; }
+  .panel { border-left: 0; border-top: 1px solid var(--rand); }
+}

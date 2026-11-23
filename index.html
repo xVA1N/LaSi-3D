@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LaSi 3D – Ladungssicherung</title>
+  <link rel="stylesheet" href="./src/style.css">
+</head>
+<body>
+  <main class="layout">
+    <section id="szene" aria-label="3D-Ansicht der Ladefläche"></section>
+    <aside class="panel">
+      <h1>LaSi 3D</h1>
+      <p class="unter">Beispiel: Niederzurren einer Ladung</p>
+
+      <label>Ladung
+        <select id="ladung"></select>
+      </label>
+      <div class="reihe">
+        <label>Masse (kg)<input id="masse" type="number" min="1" step="10"></label>
+        <label>Höhe (m)<input id="hoehe" type="number" min="0.1" step="0.1"></label>
+      </div>
+      <div class="reihe">
+        <label>Länge (m)<input id="laenge" type="number" min="0.1" step="0.1"></label>
+        <label>Breite (m)<input id="breite" type="number" min="0.1" max="2.48" step="0.1"></label>
+      </div>
+      <label>Reibpaarung
+        <select id="reibung"></select>
+      </label>
+      <label>Zurrmittel
+        <select id="gurt"></select>
+      </label>
+      <label class="haken"><input id="k2" type="checkbox"> Spannelement auf beiden Seiten (k = 2)</label>
+
+      <div id="ergebnis" class="ergebnis" aria-live="polite"></div>
+      <details>
+        <summary>Rechenweg</summary>
+        <div id="rechenweg"></div>
+      </details>
+      <p class="hinweis">Lernhilfe nach dem Verfahren der EN 12195-1. Reibbeiwerte sind Richtwerte; im Einsatz gelten Norm, Zertifikate und die Herstellerangaben der Zurrmittel.</p>
+    </aside>
+  </main>
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>
