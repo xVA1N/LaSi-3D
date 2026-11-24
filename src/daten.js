@@ -33,6 +33,7 @@ export const LADEGUT = [
   { art: 'fass', name: 'Fass 200 l', form: 'zylinder', material: 'stahl', masse: 220, l: 0.6, b: 0.6, h: 0.9 },
   { art: 'papierrolle', name: 'Papierrolle, stehend', form: 'zylinder', material: 'papier', masse: 1500, l: 1.2, b: 1.2, h: 1.4 },
   { art: 'kunststoffkisten', name: 'Kunststoffkisten, gestapelt', form: 'quader', material: 'kunststoff', masse: 300, l: 1.2, b: 0.8, h: 1.0 },
+  { art: 'rohr', name: 'Stahlrohr, liegend', form: 'rohr', material: 'stahl', masse: 1200, l: 6.0, b: 0.5, h: 0.5 },
   { art: 'mauersteine', name: 'Mauersteine, Paket', form: 'quader', material: 'stein', masse: 1000, l: 1.2, b: 0.8, h: 1.0 },
 ];
 
