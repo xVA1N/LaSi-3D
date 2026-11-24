@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { pruefe, fussabdruck, fugenReibung, rechenkraftDaN, kopfLage, STIRNWAND_KRAFT_N, MU_RHM, ZURRPUNKT_AUSSEN } from './modell.js';
+import { pruefe, fussabdruck, fugenReibung, rechenkraftDaN, kopfLage, ladereihen, STIRNWAND_KRAFT_N, MU_RHM, ZURRPUNKT_AUSSEN } from './modell.js';
 import { FAHRZEUGE, LADEGUT, HILFSMITTEL, GURTTYPEN, MATERIALIEN, beispiel } from './daten.js';
 import { bewegGruppe, vereinigung, anWand, verschiebe, abstandVorne, unterlage, setzeUnterlage, freierGurtX, UEBERSTAND_MAX } from './aktionen.js';
 import { pruefeUebermass, GRENZEN } from './uebermass.js';
@@ -11,6 +11,7 @@ let zustand = lade() ?? { fahrzeugId: 'sattel', ...beispiel('sattel') };
 let auswahl = null; // { art: 'objekt' | 'gurt', id }
 let ergebnis = null;
 let uebermass = null;
+let reihen = [];
 let ansicht = 'oben';
 try { ansicht = localStorage.getItem('lasi3d-ansicht') === '3d' ? '3d' : 'oben'; } catch { /* ohne Speicher: Draufsicht */ }
 let zaehler = 0;
@@ -334,9 +335,24 @@ function zeichne() {
     const info = ergebnis.gurte.find((i) => i.id === g.id), gew = auswahl?.art === 'gurt' && auswahl.id === g.id;
     if (g.art === 'kopf') baueKopf(g, info, gew); else if (g.art === 'direkt') baueDirekt(g, info, gew); else baueGurt(g, info, gew);
   }
+  baueReihen();
   baueUebermass();
   baueMarken();
   baueMini();
+}
+
+// Ladereihen: Streifen im Wechsel auf der Ladefläche unter der Ladung
+const REIHENFARBEN = [0x4f9dde, 0x58c08a];
+function baueReihen() {
+  const { breite: B, hoehe: H } = fahrzeug();
+  for (const r of reihen) {
+    const farbe = REIHENFARBEN[(r.nr - 1) % 2];
+    const streifen = kasten(r.x1 - r.x0 - 0.04, 0.004, B - 0.04, mat(farbe, { transparent: true, opacity: 0.45, depthWrite: false }), (r.x0 + r.x1) / 2, H + 0.003, 0);
+    streifen.castShadow = false;
+    ladungGruppe.add(streifen);
+    // farbiger Balken auf beiden Außenrahmen, damit die Reihe auch unter der Ladung sichtbar ist
+    for (const seite of [-1, 1]) ladungGruppe.add(kasten(r.x1 - r.x0 - 0.06, 0.03, 0.07, mat(farbe), (r.x0 + r.x1) / 2, H + 0.015, seite * (B / 2 + 0.035)));
+  }
 }
 
 // Markierungen bei Übermaß: Fahne am Überstand, Maßlinie, rote Grenzflächen für Breite und Höhe
@@ -408,6 +424,8 @@ function baueMarken() {
       marke('name', `${esc(kurz)}<small>${zahl(o.masse, 0)} kg</small>`, new THREE.Vector3(o.x, H + ergebnis.lage.get(o.id).y + o.h, o.z), true);
     }
   }
+  // Schild in der vorderen rechten Ecke der Reihe, damit es die Namen in der Mitte nicht verdeckt
+  for (const r of reihen) marke(`reihe r${(r.nr - 1) % 2}`, `Reihe ${r.nr}`, new THREE.Vector3(r.x1 - 0.1, H, B / 2 - 0.05));
   if (uebermass.ueberHinten > 0.005) {
     const z = Math.min(Math.max(uebermass.fahne?.z ?? 0, -B / 2), B / 2);
     marke(uebermass.ueberHinten > GRENZEN.kennzeichnungAb ? 'warnung' : 'mass', `Überstand ${laenge(uebermass.ueberHinten)}`, new THREE.Vector3(-L / 2 - uebermass.ueberHinten / 2, H, z));
@@ -528,6 +546,7 @@ let geplant = false;
 function aktualisiere() {
   zustand.gurte = zustand.gurte.filter((g) => !g.ziel || objekt(g.ziel));
   ergebnis = pruefe({ ...zustand, flaeche: fahrzeug() });
+  reihen = ladereihen(ergebnis.ergebnisse.map((e) => e.einheit));
   uebermass = pruefeUebermass({ objekte: zustand.objekte, lage: ergebnis.lage, fahrzeug: fahrzeug(), nutzlast: zustand.nutzlast });
   if (auswahl && !(gewaehltesObjekt() || gewaehlterGurt())) auswahl = null;
   zeichne();
@@ -625,7 +644,7 @@ function zeigeErgebnis() {
     const kq = e.kippen.seitlich, kl = e.kippen.laengs;
     const ersteLadung = e.einheit.mitglieder.find((o) => o.typ === 'ladung');
     return `<div class="einheit ${e.ok ? '' : 'nein'}" data-waehle="${ersteLadung.id}">
-      <b>${esc(einheitName(e))}</b>
+      <b>${reihen.find((r) => r.ids.includes(e.id)) ? `<span class="reihe-nr">Reihe ${reihen.find((r) => r.ids.includes(e.id)).nr}</span> ` : ''}${esc(einheitName(e))}</b>
       <span class="werte">${zahl(e.einheit.masse, 0)} kg · μ = ${zahl(e.einheit.mu)} · ${e.gurte.length} Gurt${e.gurte.length === 1 ? '' : 'e'}</span>
       <table>${zeilen}
         <tr><td>Kippen quer</td><td class="${kq.ok ? 'gut' : 'schlecht'}">${kq.brauch === 0 ? 'standsicher' : kq.ok ? 'durch Gurte gehalten' : 'kippt'}</td></tr>
@@ -645,7 +664,8 @@ function zeigeLeiste() {
   let status;
   if (o) {
     status = objektStatus(o);
-    $('leiste-titel').textContent = o.typ === 'rhm' ? o.name : `${o.name} · ${zahl(o.masse, 0)} kg`;
+    const reihe = reihen.find((r) => r.ids.includes(einheitVon(o)?.id));
+    $('leiste-titel').textContent = `${reihe ? `Reihe ${reihe.nr} · ` : ''}${o.typ === 'rhm' ? o.name : `${o.name} · ${zahl(o.masse, 0)} kg`}`;
     $('pad').classList.remove('nur-laengs');
     $('leiste-knoepfe').classList.toggle('vier', o.art === 'europalette');
     $('leiste-knoepfe').innerHTML = knopf('anwand', '⇧', 'An Wand') + knopf('drehen', '⟳', 'Drehen', o.form === 'zylinder' ? 'disabled' : '')

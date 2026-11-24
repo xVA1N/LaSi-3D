@@ -321,3 +321,22 @@ export function pruefe({ objekte, gurte, flaeche }) {
 
   return { ergebnisse, gurte: gurtInfo, lage, stirnwandLast, hinweise, ok: ergebnisse.every((e) => e.ok) && !hinweise.some((h) => h.art !== 'gurt') };
 }
+
+/**
+ * Ladereihen: Einheiten, die sich in Längsrichtung überwiegend überdecken, bilden eine Reihe.
+ * Nummeriert von der Stirnwand nach hinten. Gibt [{ nr, x0, x1, ids }] zurück.
+ */
+export function ladereihen(einheiten) {
+  const sortiert = [...einheiten].sort((a, b) => b.f.x1 - a.f.x1);
+  const reihen = [];
+  for (const e of sortiert) {
+    const lang = e.f.x1 - e.f.x0;
+    const reihe = reihen.find((r) => {
+      const ueber = Math.min(r.x1, e.f.x1) - Math.max(r.x0, e.f.x0);
+      return ueber > 0.5 * Math.min(lang, r.x1 - r.x0);
+    });
+    if (reihe) { reihe.x0 = Math.min(reihe.x0, e.f.x0); reihe.x1 = Math.max(reihe.x1, e.f.x1); reihe.ids.push(e.id); }
+    else reihen.push({ x0: e.f.x0, x1: e.f.x1, ids: [e.id] });
+  }
+  return reihen.sort((a, b) => b.x1 - a.x1).map((r, i) => ({ nr: i + 1, ...r }));
+}
