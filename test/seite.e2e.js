@@ -296,6 +296,14 @@ pruefe((await seite.evaluate(() => window.lasi.uebermass())).ueberHinten > 1.2, 
 await seite.selectOption('#fahrzeug', 'klein'); await seite.click('#beispiel'); await kurz();
 pruefe((await seite.textContent('#ergebnis')).includes('Achslasten') && await seite.isVisible('svg.plan'), 'Achslasten und Lastverteilungsplan werden angezeigt');
 pruefe((await seite.textContent('#marken')).includes('Schwerpunkt'), 'Schwerpunkt der Ladung wird markiert');
+pruefe((await seite.textContent('#achsbox')).includes('Achslasten') && (await seite.textContent('#marken')).includes('1'), 'Achslast-Kästchen oben links und Achsnummern an den Rädern');
+await seite.selectOption('#fahrzeug', 'sattel'); await seite.click('#beispiel'); await kurz();
+const achsText = await seite.textContent('#achsbox');
+pruefe(['Zugmaschine', 'Auflieger', 'Zapfen', '⊙'].every((t) => achsText.includes(t)), 'Sattelzug: Zugmaschine, Königszapfen und Aufliegerachsen 1–3');
+await seite.click('#achsbox'); await kurz();
+pruefe(await seite.isHidden('#achsbox .inhalt'), 'Kästchen lässt sich einklappen');
+await seite.click('#achsbox'); await kurz();
+await seite.selectOption('#fahrzeug', 'klein'); await seite.click('#beispiel'); await kurz();
 const fass = (await lage()).objekte.find((o) => o.art === 'fass');
 await seite.evaluate((id) => window.lasi.setze(id, { masse: 1500 }), fass.id); await kurz();
 const ach = await seite.evaluate(() => window.lasi.achslasten());

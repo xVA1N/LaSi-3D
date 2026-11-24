@@ -105,34 +105,122 @@ function leere(gruppe) {
 // Fahrzeug
 const lkw = new THREE.Group();
 szene.add(lkw);
+// Rad mit Reifen, Felge und Nabe; aussen = +1/−1 (Felge zur Außenseite)
+function rad(gruppe, x, y, z, r, breite, aussen) {
+  const reifen = new THREE.Mesh(new THREE.CylinderGeometry(r, r, breite, 32).rotateX(Math.PI / 2), mat(0x1b1b1b, { roughness: 0.9 }));
+  reifen.position.set(x, y, z);
+  reifen.castShadow = true;
+  gruppe.add(reifen);
+  const flanke = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.97, r * 0.97, 0.01, 32).rotateX(Math.PI / 2), mat(0x2a2a2a, { roughness: 0.95 }));
+  flanke.position.set(x, y, z + aussen * (breite / 2 + 0.001));
+  gruppe.add(flanke);
+  const felge = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.58, r * 0.58, 0.02, 24).rotateX(Math.PI / 2), mat(0xb9c0c6, { metalness: 0.7, roughness: 0.35 }));
+  felge.position.set(x, y, z + aussen * (breite / 2 + 0.005));
+  gruppe.add(felge);
+  const nabe = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.2, r * 0.2, 0.06, 16).rotateX(Math.PI / 2), mat(0x7d858c, { metalness: 0.7, roughness: 0.4 }));
+  nabe.position.set(x, y, z + aussen * (breite / 2 + 0.03));
+  gruppe.add(nabe);
+}
+// Achse: Achsrohr und je Seite ein Rad oder Zwillingsräder
+function achse(gruppe, x, r, B, zwilling) {
+  const rohr = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, B - 0.5, 12).rotateX(Math.PI / 2), mat(0x2b2f33, { metalness: 0.5 }));
+  rohr.position.set(x, r, 0);
+  gruppe.add(rohr);
+  for (const s of [-1, 1]) {
+    if (zwilling) { rad(gruppe, x, r, s * (B / 2 - 0.14), r, 0.27, s); rad(gruppe, x, r, s * (B / 2 - 0.43), r, 0.27, s); }
+    else rad(gruppe, x, r, s * (B / 2 - 0.21), r, 0.38, s);
+  }
+}
+
 function baueFahrzeug() {
   leere(lkw);
   const f = fahrzeug();
   const { laenge: L, breite: B, hoehe: H } = f;
-  lkw.add(kasten(L, 0.15, B, mat(0x6b4f35), 0, H - 0.075, 0)); // Boden
-  lkw.add(kasten(L, 0.3, 1.0, mat(0x2b2f33), 0, H - 0.32, 0)); // Rahmen
+  const al = f.achslast;
+  const rahmen = mat(0x2b2f33, { metalness: 0.4, roughness: 0.6 });
+  const grau = mat(0x9aa3aa, { metalness: 0.5, roughness: 0.5 });
+  const lack = mat(0x30577a, { metalness: 0.3 });
+  // Ladefläche: Holzboden, Außenrahmen mit Zurrpunkten, Stirnwand
+  lkw.add(kasten(L, 0.06, B, mat(0x6b4f35), 0, H - 0.03, 0));
   for (const s of [-1, 1]) {
-    lkw.add(kasten(L, 0.18, 0.06, mat(0x30577a, { metalness: 0.3 }), 0, H - 0.09, s * (B / 2 + 0.03))); // Außenrahmen
-    for (let x = -L / 2 + 0.25; x < L / 2; x += 0.5) lkw.add(kasten(0.05, 0.05, 0.03, mat(0x15191c), x, H - 0.09, s * (B / 2 + 0.065))); // Zurrpunkte
-    for (let i = 0; i < f.rungen; i++) {
-      const x = -L / 2 + 0.3 + (i * (L - 0.6)) / Math.max(f.rungen - 1, 1);
-      lkw.add(kasten(0.08, 1.9, 0.06, mat(0x3b4148, { metalness: 0.4 }), x, H + 0.95, s * (B / 2 + 0.03)));
-    }
+    lkw.add(kasten(L, 0.18, 0.06, lack, 0, H - 0.09, s * (B / 2 + 0.03)));
+    for (let x = -L / 2 + 0.25; x < L / 2; x += 0.5) lkw.add(kasten(0.05, 0.05, 0.03, mat(0x15191c), x, H - 0.09, s * (B / 2 + 0.065)));
   }
   lkw.add(kasten(0.08, f.haus ? 1.3 : 1.6, B, mat(0x56616b, { metalness: 0.4 }), L / 2 + 0.04, H + (f.haus ? 0.65 : 0.8), 0)); // Stirnwand
-  const hausH = f.id === 'klein' ? 2.3 : 2.9;
-  lkw.add(kasten(2.2, hausH, B, mat(0xc9d2d8, { metalness: 0.2 }), L / 2 + 1.35, 0.6 + hausH / 2, 0));
-  lkw.add(kasten(0.05, 0.9, B - 0.3, mat(0x1c2a36, { roughness: 0.2 }), L / 2 + 2.46, 0.6 + hausH * 0.68, 0));
-  const radGeo = new THREE.CylinderGeometry(0.5, 0.5, 0.35, 24).rotateX(Math.PI / 2);
-  const al = f.achslast;
-  const achsen = [al.vorn, al.hinten, al.antrieb, al.aggregat].filter(Boolean).flatMap((a) => a.raeder);
-  for (const x of achsen) {
-    for (const z of [-(B / 2 - 0.2), B / 2 - 0.2]) {
-      const rad = new THREE.Mesh(radGeo, mat(0x161616));
-      rad.position.set(x, 0.5, z);
-      rad.castShadow = true;
-      lkw.add(rad);
+  const sattel = al.art === 'sattel';
+  const rHinten = f.id === 'klein' ? 0.4 : sattel ? 0.53 : 0.5;
+  // Längsträger: beim Auflieger vorne als flacher Schwanenhals über der Zugmaschine
+  const hals = sattel ? 3.0 : 0;
+  for (const s of [-1, 1]) {
+    const traegerH = f.id === 'klein' ? 0.2 : 0.38;
+    lkw.add(kasten(L - hals, traegerH, 0.12, rahmen, -hals / 2, H - 0.06 - traegerH / 2, s * 0.5));
+    if (hals) lkw.add(kasten(hals, 0.16, 0.12, rahmen, L / 2 - hals / 2, H - 0.14, s * 0.5));
+  }
+  // Achsen des Aufbaus, Kotflügel und Luftfederbälge
+  const hintere = sattel ? al.aggregat.raeder : al.hinten.raeder;
+  for (const x of hintere) {
+    achse(lkw, x, rHinten, B, !sattel);
+    for (const s of [-1, 1]) lkw.add(kasten(0.22, 0.2, 0.22, mat(0x1d1f21), x, H - 0.55, s * 0.5));
+  }
+  const x0 = Math.min(...hintere) - rHinten - 0.12, x1 = Math.max(...hintere) + rHinten + 0.12;
+  for (const s of [-1, 1]) lkw.add(kasten(x1 - x0, 0.04, 0.5, mat(0x1d1f21), (x0 + x1) / 2, 2 * rHinten + 0.1, s * (B / 2 - 0.25)));
+  // seitlicher Unterfahrschutz zwischen Stützwinden bzw. Fahrerhaus und Achsen
+  const schutzVorn = sattel ? L / 2 - 3.2 : L / 2 - 0.3, schutzHinten = x1 + 0.1;
+  if (schutzVorn > schutzHinten) {
+    for (const s of [-1, 1]) {
+      for (const y of [0.45, 0.8]) lkw.add(kasten(schutzVorn - schutzHinten, 0.1, 0.03, grau, (schutzVorn + schutzHinten) / 2, y, s * (B / 2 - 0.04)));
+      for (let x = schutzHinten + 0.3; x < schutzVorn; x += 1.6) lkw.add(kasten(0.05, H - 0.4, 0.04, grau, x, (H - 0.1) / 2 + 0.2, s * (B / 2 - 0.08)));
     }
+  }
+  // Heck: Unterfahrschutz, Leuchten
+  lkw.add(kasten(0.12, 0.12, B - 0.25, grau, -L / 2 + 0.2, 0.5, 0));
+  for (const s of [-1, 1]) {
+    lkw.add(kasten(0.06, H - 0.6, 0.08, grau, -L / 2 + 0.2, (H - 0.6) / 2 + 0.5, s * 0.7));
+    lkw.add(kasten(0.05, 0.13, 0.36, mat(0xd32f2f, { emissive: 0x400000 }), -L / 2 - 0.01, H - 0.3, s * (B / 2 - 0.3)));
+    lkw.add(kasten(0.06, 0.06, 0.04, mat(0xffa000, { emissive: 0x402000 }), 0, H - 0.2, s * (B / 2 + 0.02))); // Seitenmarkierung
+  }
+  if (sattel) {
+    // Stützwinden mit Fußplatten, Königszapfen
+    for (const s of [-1, 1]) {
+      lkw.add(kasten(0.12, H - 0.5, 0.12, grau, L / 2 - 2.6, (H - 0.5) / 2 + 0.1, s * 0.62));
+      lkw.add(kasten(0.3, 0.05, 0.3, rahmen, L / 2 - 2.6, 0.08, s * 0.62));
+    }
+    lkw.add(kasten(0.1, 0.1, 1.24, grau, L / 2 - 2.6, H - 0.55, 0));
+    const zapfen = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.12, 12), grau);
+    zapfen.position.set(al.zapfen.x, H - 0.28, 0);
+    lkw.add(zapfen);
+  }
+  // Zugmaschine bzw. Fahrgestell vorn
+  const vorn = al.vorn.x;
+  const rVorn = f.id === 'klein' ? 0.4 : 0.52;
+  const hausL = f.id === 'klein' ? 2.0 : 2.3, hausH = f.id === 'klein' ? 2.3 : 2.8;
+  const hausHinten = sattel ? L / 2 + 0.45 : L / 2 + 0.15, hausVorn = hausHinten + hausL;
+  const boden = sattel ? 1.05 : rVorn * 2 - 0.05;
+  const rahmenHinten = sattel ? al.antrieb.x - 1.5 : L / 2 - 0.5;
+  for (const s of [-1, 1]) lkw.add(kasten(hausVorn - rahmenHinten, 0.26, 0.1, rahmen, (hausVorn + rahmenHinten) / 2, rVorn + 0.25, s * 0.45));
+  achse(lkw, vorn, rVorn, B, false);
+  if (sattel) {
+    achse(lkw, al.antrieb.x, 0.52, B, true);
+    lkw.add(kasten(0.95, 0.08, 0.95, rahmen, al.zapfen.x, H - 0.27, 0)); // Sattelkupplung
+    for (const s of [-1, 1]) lkw.add(kasten(1.3, 0.04, 0.55, mat(0x1d1f21), al.antrieb.x, 1.16, s * (B / 2 - 0.27)));
+  }
+  const weiss = mat(0xe6e9ec, { metalness: 0.15, roughness: 0.45 });
+  lkw.add(kasten(hausL, hausH, B, weiss, (hausVorn + hausHinten) / 2, boden + hausH / 2, 0)); // Fahrerhaus
+  lkw.add(kasten(0.04, hausH * 0.33, B - 0.25, mat(0x1c2a36, { roughness: 0.15, metalness: 0.3 }), hausVorn + 0.01, boden + hausH * 0.7, 0)); // Frontscheibe
+  for (const s of [-1, 1]) lkw.add(kasten(hausL * 0.4, hausH * 0.28, 0.04, mat(0x1c2a36, { roughness: 0.15 }), hausVorn - hausL * 0.25, boden + hausH * 0.7, s * (B / 2 + 0.01))); // Seitenfenster
+  lkw.add(kasten(0.05, hausH * 0.22, B - 0.6, mat(0x3a4047), hausVorn + 0.02, boden + hausH * 0.32, 0)); // Kühlergrill
+  lkw.add(kasten(0.18, 0.42, B + 0.02, rahmen, hausVorn + 0.06, boden - 0.05, 0)); // Stoßfänger
+  for (const s of [-1, 1]) {
+    lkw.add(kasten(0.04, 0.14, 0.32, mat(0xfff6d5, { emissive: 0x504a30 }), hausVorn + 0.16, boden + 0.02, s * (B / 2 - 0.32))); // Scheinwerfer
+    lkw.add(kasten(0.06, 0.06, 0.28, rahmen, hausVorn - 0.15, boden + hausH * 0.78, s * (B / 2 + 0.14))); // Spiegelarm
+    lkw.add(kasten(0.08, 0.38, 0.06, rahmen, hausVorn - 0.15, boden + hausH * 0.7, s * (B / 2 + 0.28))); // Spiegel
+    lkw.add(kasten(0.5, 0.16, 0.08, rahmen, hausVorn - 0.55, boden - 0.25, s * (B / 2 - 0.02))); // Trittstufe
+  }
+  lkw.add(kasten(0.25, 0.1, B - 0.1, weiss, hausVorn - 0.1, boden + hausH + 0.05, 0)); // Sonnenblende
+  if (sattel) {
+    const tank = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 1.1, 20).rotateZ(Math.PI / 2), mat(0xc9ced3, { metalness: 0.8, roughness: 0.3 }));
+    tank.position.set(hausHinten - 0.2, 0.75, -(B / 2 - 0.35));
+    lkw.add(tank);
   }
   kamera3d.position.set(-L * 0.45, 4 + L * 0.35, 6 + L * 0.8);
   steuer3d.target.set(L * 0.05, H, 0);
@@ -477,6 +565,8 @@ function baueMarken() {
   }
   if (achs.schwerpunkt.masse > 0) marke('mass', '⊕ Schwerpunkt', new THREE.Vector3(achs.schwerpunkt.x, H + 0.6, achs.schwerpunkt.z));
   for (const a of achs.achsen) if (!a.ok) marke('warnung', `${a.name}: ${zahl(a.last / 1000, 1)} t`, new THREE.Vector3(a.x, 1.3, B / 2));
+  for (const a of einzelachsen()) marke(`achsnr ${a.last > a.max + 1e-6 ? 'zu' : ''}`, a.nr, new THREE.Vector3(a.x, 0.5, B / 2 + 0.05));
+  if (achs.zapfen) marke('achsnr zapfen', '⊙', new THREE.Vector3(achs.zapfen.x, H - 0.3, B / 2 + 0.05));
   if (uebermass.zuHoch) marke('warnung', `Höhe ${zahl(uebermass.hoehe, 2)} m`, new THREE.Vector3(0, GRENZEN.hoehe, 0));
   const o = gewaehltesObjekt();
   if (o) {
@@ -588,6 +678,7 @@ function aktualisiere() {
   if (auswahl && !(gewaehltesObjekt() || gewaehlterGurt())) auswahl = null;
   zeichne();
   zeigeErgebnis();
+  zeigeAchsbox();
   zeigeLeiste();
   blattLage();
 }
@@ -656,6 +747,48 @@ function gurtStatus(g) {
   const gekappt = g.stf > g.lc / 2 ? ` · gerechnet mit ${rechenkraftDaN(g)} daN` : '';
   return { ok: true, text: `α ≈ ${zahl(info.winkel, 0)}° · über ${info.getroffen.length} Einheit${info.getroffen.length === 1 ? '' : 'en'}${gekappt}` };
 }
+
+// Achsen einzeln von vorn nach hinten: Zugmaschine bzw. Fahrgestell und beim Sattelzug die Aufliegerachsen 1, 2, 3
+function einzelachsen() {
+  const al = fahrzeug().achslast;
+  const liste = [];
+  for (const a of achs.achsen) {
+    const n = a.raeder.length;
+    a.raeder.forEach((x) => liste.push({ x, last: a.last / n, max: a.max / n, gruppe: a === achs.achsen.at(-1) && al.art === 'sattel' ? 'auflieger' : 'fahrzeug', name: a.name }));
+  }
+  liste.sort((p, q) => q.x - p.x);
+  let nrFz = 0, nrAuf = 0;
+  for (const e of liste) {
+    if (al.art === 'sattel' && e.gruppe === 'fahrzeug') e.nr = ++nrFz === 1 ? 'VA' : 'HA';
+    else if (e.gruppe === 'auflieger') e.nr = String(++nrAuf);
+    else e.nr = String(++nrFz);
+  }
+  return liste;
+}
+function zeigeAchsbox() {
+  const box = $('achsbox');
+  if (!achs) { box.textContent = ''; return; }
+  const t = (kg) => `${zahl(kg / 1000, 1)} t`;
+  const zeile = (nr, last, max, extra = '') => `<div class="zeile ${last > max + 1e-6 ? 'zu' : ''}"><span class="nr ${extra}">${nr}</span><span class="wert">${t(last)}</span><span class="max">/ ${t(max)}</span></div>`;
+  const achsen = einzelachsen();
+  const sattel = fahrzeug().achslast.art === 'sattel';
+  let html = '';
+  if (sattel) {
+    html += `<div class="gruppe">Zugmaschine</div>${achsen.filter((a) => a.gruppe === 'fahrzeug').map((a) => zeile(a.nr, a.last, a.max)).join('')}`;
+    html += `<div class="gruppe">Auflieger</div><div class="zeile"><span class="nr zapfen" title="Königszapfen">⊙</span><span class="wert">${t(achs.zapfen.last)}</span><span class="max">Zapfen</span></div>`;
+    html += achsen.filter((a) => a.gruppe === 'auflieger').map((a) => zeile(a.nr, a.last, a.max)).join('');
+  } else html += achsen.map((a) => zeile(a.nr, a.last, a.max)).join('');
+  const ok = achs.achsen.every((x) => x.ok);
+  box.innerHTML = `<div class="kopf"><span>Achslasten ${ok ? '<span class="gut">✓</span>' : '<span class="schlecht">✗</span>'}</span><span>${box.classList.contains('zu-klein') ? '▸' : '▾'}</span></div><div class="inhalt">${html}</div>`;
+}
+// Antippen klappt das Kästchen ein und aus; bleibt im Browser gespeichert
+try { if (localStorage.getItem('lasi3d-achsbox') === 'zu') document.getElementById('achsbox').classList.add('zu-klein'); } catch { /* egal */ }
+document.getElementById('achsbox').addEventListener('click', () => {
+  const box = document.getElementById('achsbox');
+  box.classList.toggle('zu-klein');
+  try { localStorage.setItem('lasi3d-achsbox', box.classList.contains('zu-klein') ? 'zu' : 'auf'); } catch { /* egal */ }
+  zeigeAchsbox();
+});
 
 function achslastBlock() {
   const f = fahrzeug(), L = f.laenge;
@@ -1417,6 +1550,8 @@ window.lasi = {
   obenSicht: () => ({ x: steuerOben.target.x, z: steuerOben.target.z, zoom: kameraOben.zoom, minZoom: steuerOben.minZoom }),
   // Werte eines Objekts direkt setzen (für die Tests)
   setze(id, werte) { Object.assign(objekt(id), werte); aendere(); },
+  // Kamera frei setzen (für Bilder in den Tests)
+  kamera(ziel, pos) { steuer3d.target.set(...ziel); kamera3d.position.set(...pos); steuer3d.update(); },
   // Kamera nah an einen Punkt der Ladefläche (für Bilder in den Tests)
   nah(x, z, abstand = 3) {
     const H = fahrzeug().hoehe;

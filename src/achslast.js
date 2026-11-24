@@ -40,13 +40,14 @@ export function pruefeAchslasten({ objekte, fahrzeug }) {
   const sp = schwerpunkt(objekte);
   const achsen = lasten(a, sp.masse, sp.x).map((x) => ({ ...x, ok: x.last <= x.max + 1e-6 }));
   const gesamt = achsen.reduce((s, x) => s + x.last, 0);
+  const zapfen = a.art === 'sattel' ? { x: a.zapfen.x, last: a.zapfen.leer + (sp.masse * (sp.x - a.aggregat.x)) / (a.zapfen.x - a.aggregat.x) } : null;
   const meldungen = achsen.filter((x) => !x.ok).map((x) => ({ art: 'achslast', stufe: 'fehler', text: `${x.name} überladen: ${Math.round(x.last).toLocaleString('de-DE')} kg von ${x.max.toLocaleString('de-DE')} kg.` }));
   const lenk = achsen.find((x) => x.lenk);
   // Bei Einzelfahrzeugen gilt der Richtwert für die ganze Masse, beim Sattelzug für die Zugmaschine mit Zapfenlast
   const bezug = a.art === 'einzel' ? gesamt : achsen.filter((x) => x !== achsen.at(-1)).reduce((s, x) => s + x.last, 0);
   const lenkanteil = lenk.last / bezug;
   if (sp.masse > 0 && lenkanteil < LENKACHSE_MIN) meldungen.push({ art: 'lenkachse', stufe: 'fehler', text: `Lenkachse zu leicht: ${Math.round(lenkanteil * 100)} %, mindestens ${LENKACHSE_MIN * 100} % (Richtwert). Ladung weiter nach vorne.` });
-  return { achsen, gesamt, schwerpunkt: sp, lenkanteil, meldungen, ok: !meldungen.length };
+  return { achsen, gesamt, zapfen, schwerpunkt: sp, lenkanteil, meldungen, ok: !meldungen.length };
 }
 
 /**
