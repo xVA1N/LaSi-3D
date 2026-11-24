@@ -5,9 +5,11 @@ Ladungssicherung am Lkw in 3D: Beispiele durchgehen, Zurrarten vergleichen und d
 ## Stand
 
 - **Fahrzeuge:** Sattelauflieger (13,6 m), Motorwagen (7,3 m), kleiner Lkw bis 7,5 t (6,2 m), jeweils mit Stirnwand, Außenrahmen mit Zurrpunkten und Rungen
-- **Ladegut selbst platzieren:** Holzkiste, Gitterbox, IBC, Fass, Papierrolle, Kunststoffkisten, Mauersteine. Antippen wählt aus, Ziehen verschiebt (rastet an Stirnwand, Bordwand und Nachbarn ein), Drehen 90°, Kopieren, Löschen; Masse, Maße, Material und μ einstellbar
-- **Hilfsmittel:** Europalette und Antirutschmatte (RHM) platzieren; Ladung, die auf eine Palette oder Matte gezogen wird, steht darauf und wird mit ihr bewegt
-- **Zurrgurte (Niederzurren):** frei setzen und verschieben; Vorspannkraft S_TF und LC je Gurt selbst festlegen, Ratsche auf einer oder beiden Seiten (k = 1,5 / 2)
+- **Zwei Ansichten:** Draufsicht zum Platzieren (Stirnwand oben, Meter am Rand, Übersicht der ganzen Fläche, ein Finger verschiebt, zwei zoomen) und 3D zum Anschauen
+- **Ladegut aus dem Katalog:** Holzkiste, Gitterbox, IBC, Fass, Papierrolle, Kunststoffkisten, Mauersteine; neues Ladegut kommt an die nächste freie Stelle
+- **Leiste am ausgewählten Teil:** Pfeile (5 cm), „An Wand“ (bis Stirnwand oder Ladung davor), Drehen, Gurt +, Bearbeiten, Kopieren, Löschen; Status und Abstand nach vorne direkt sichtbar. Ziehen verschiebt, rastet an Stirnwand, Bordwand und Nachbarn ein
+- **Fenster zum Bearbeiten:** Masse und Maße mit Plus/Minus, „Steht auf“ Ladefläche, Palette, Antirutschmatte oder beides (legt die Unterlage automatisch darunter), unter „Mehr“ Material und Reibbeiwert
+- **Zurrgurte (Niederzurren):** frei setzen und verschieben; im Fenster Vorspannkraft S_TF (Plus/Minus oder Schieberegler), Gurttyp, LC, Abstand zur Stirnwand und Ratsche auf einer oder beiden Seiten (k = 1,5 / 2)
 - **Prüfung je Ladeeinheit:** vorwärts, rückwärts, seitlich (Auslastung in %), Formschluss an der Stirnwand (auch über davorstehende Ladung) mit Last auf die Stirnwand, Kippen quer und längs; Hinweise bei Überschneidung, Überstand, Gurt ohne Ladung und S_TF über 0,5 · LC. Gesicherte Ladung hat einen grünen, ungesicherte einen roten Umriss
 - **Beispiele** je Fahrzeug; die Beladung bleibt im Browser gespeichert
 
@@ -20,7 +22,8 @@ Gerechnet wird nach dem Verfahren der EN 12195-1:2010 (Beschleunigungsbeiwerte S
 | `src/modell.js` | Stapeln, Ladeeinheiten, Gurte, Prüfung der ganzen Beladung |
 | `src/berechnung.js` | Grundformeln und Beiwerte nach EN 12195-1 |
 | `src/daten.js` | Fahrzeuge, Ladegut, Hilfsmittel, Gurttypen, Beispiele |
-| `src/main.js` | 3D-Szene (three.js), Ziehen und Bedienfeld |
+| `src/aktionen.js` | Verschieben, „An Wand“, Unterlage wechseln, Abstände, Platz für Gurte |
+| `src/main.js` | Ansichten (three.js), Leiste, Fenster, Ziehen und Bedienfeld |
 | `test/*.test.js` | Rechentests mit von Hand nachgerechneten Beispielen |
 | `test/seite.e2e.js` | Seitentest im Browser (Playwright) |
 
