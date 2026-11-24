@@ -206,3 +206,32 @@ test('Ladereihen: nebeneinander eine Reihe, hintereinander nummeriert von vorne'
   const versetzt = ladereihen([{ id: 'a', f: { x0: 0, x1: 1.2 } }, { id: 'b', f: { x0: 0.3, x1: 1.5 } }]);
   assert.equal(versetzt.length, 1);
 });
+
+test('Gurt, der durch eine Palette läuft, ist mangelhaft und zählt nicht', () => {
+  const k = kiste('k', 0, 0, { b: 1.0 });
+  const p = palette('p', -1.1, -0.9); // liegt zwischen hinterer linker Ecke und Zurrpunkt
+  const r = pruefe({ objekte: [k, p], flaeche, gurte: diagonal('k') });
+  const hl = r.gurte.find((g) => g.id === 'dhl');
+  assert.match(hl.mangel, /läuft durch/);
+  assert.ok(r.hinweise.some((h) => h.art === 'gurt-mangel' && h.id === 'dhl'));
+  assert.equal(r.ok, false);
+  const ohne = pruefe({ objekte: [k], flaeche, gurte: diagonal('k') });
+  const kiste1 = (x) => x.ergebnisse.find((e) => e.id === 'k').richtungen.vorwaerts.hat;
+  assert.ok(kiste1(r) < kiste1(ohne)); // der mangelhafte Gurt fehlt in der Rechnung
+});
+
+test('Leere Palette ist Ladung und muss gesichert werden', () => {
+  const r = pruefe({ objekte: [palette('p', 0)], flaeche, gurte: [] });
+  assert.equal(r.ergebnisse.length, 1);
+  assert.equal(r.ergebnisse[0].ok, false);
+  const mitGurt = pruefe({ objekte: [palette('p', 0)], flaeche, gurte: [gurt('g', 0, 250)] });
+  assert.equal(mitGurt.ergebnisse[0].richtungen.seitlich.ok, true);
+});
+
+test('Lose hochkant stehende Palette wird gemeldet, als Füllmittel nicht', () => {
+  const lose = pruefe({ objekte: [hochkant('p', 0)], flaeche, gurte: [] });
+  assert.ok(lose.hinweise.some((h) => h.art === 'lose' && h.id === 'p'));
+  assert.equal(lose.ok, false);
+  const fueller = pruefe({ objekte: [hochkant('p', 6.8 - 0.072)], flaeche, gurte: [] });
+  assert.ok(!fueller.hinweise.some((h) => h.art === 'lose'));
+});

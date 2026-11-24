@@ -191,6 +191,15 @@ await seite.mouse.up(); await kurz();
 for (let i = fehler.length - 1; i >= 0; i--) if (fehler[i].includes('setPointerCapture')) fehler.splice(i, 1);
 pruefe(Math.abs(zwischendurch - x4) > 0.1 && Math.abs((await objektById(box)).x - x4) < 1e-9, 'Zweiter Finger bricht das Verschieben ab');
 
+// lose Palette auf der Fläche
+await seite.selectOption('#fahrzeug', 'sattel'); await seite.click('#beispiel'); await kurz();
+await seite.mouse.click(5, 300); await kurz();
+await seite.click('#palette-neu'); await kurz();
+pruefe((await status()).includes('nicht gesichert') && (await seite.textContent('#ergebnis')).includes('Europalette, leer'), 'Leere Palette gilt als ungesicherte Ladung');
+await seite.click('[data-aktion="hochkant"]'); await kurz();
+pruefe((await status()).includes('lose Teile') && (await seite.textContent('#leiste-status')).includes('ungesichert'), 'Lose Hochkant-Palette wird gemeldet');
+await seite.click('[data-aktion="loeschen"]'); await kurz();
+
 // RHM: mit ausgewähltem Ladegut kommt es darunter, sonst an die nächste freie Stelle
 await seite.selectOption('#fahrzeug', 'sattel'); await seite.click('#beispiel'); await kurz();
 await seite.click('#ladegut-neu'); await seite.click('[data-ladegut="holzkiste"]'); await kurz();
@@ -215,11 +224,16 @@ pruefe((await seite.textContent('#rhm-neu')).includes('+ RHM'), 'Knopf heißt �
 await seite.selectOption('#fahrzeug', 'sattel'); await seite.click('#beispiel'); await kurz();
 await seite.click('#ladegut-neu'); await seite.click('[data-ladegut="gitterbox"]'); await kurz();
 const box2 = await seite.evaluate(() => window.lasi.auswahl().id);
-await seite.evaluate((id) => window.lasi.setze(id, { z: 0 }), box2); await kurz(); // mittig, damit die Gurte seitlich ziehen können
+await seite.evaluate((id) => window.lasi.setze(id, { z: 0, x: 1.0 }), box2); await kurz(); // mittig und frei, damit die Gurte nirgends durchlaufen
 await seite.click('[data-aktion="gurt"]'); await seite.click('[data-neu="diagonal"]'); await kurz();
 let dg = (await lage()).gurte.filter((g) => g.art === 'direkt');
 pruefe(dg.length === 4 && dg.every((g) => g.ziel === box2), 'Diagonalzurren legt 4 Gurte an die Ladung');
 pruefe((await status()).includes('✓'), 'Mit Diagonalzurren gesichert');
+// direkt hinter die Mauersteine: die vorderen Gurte laufen durch die Paletten davor
+await seite.evaluate((id) => window.lasi.setze(id, { x: 2.98 }), box2); await kurz();
+pruefe((await status()).includes('Zurrmittel mangelhaft') && (await seite.textContent('#ergebnis')).includes('läuft durch'), 'Gurt durch andere Ladung: „Zurrmittel mangelhaft“');
+await seite.evaluate((id) => window.lasi.setze(id, { x: 1.0 }), box2); await kurz();
+pruefe((await status()).includes('✓'), 'Freier Platz: wieder gesichert');
 pruefe((await seite.textContent(`[data-waehle="${box2}"]`)).includes('Direktzurren'), 'Prüfung nennt Direktzurren');
 await seite.click('[data-aktion="bearbeiten"]');
 await seite.click('[data-feld="dabstand"] [data-d="1"]'); await kurz();
