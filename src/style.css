@@ -113,3 +113,7 @@ details.mehr .inhalt { padding-bottom: 8px; }
 .masse td:nth-child(3) { text-align: right; color: var(--leise); font-size: .78rem; }
 li.pflicht { color: #b26a00; }
 @media (prefers-color-scheme: dark) { li.pflicht { color: #f0b25a; } }
+
+.marke.reihe { transform: translate(-100%, 0); font-size: 11px; font-weight: 700; color: #fff; padding: 2px 6px; border-radius: 6px; box-shadow: 0 1px 3px #0003; }
+.marke.reihe.r0 { background: #2f78b7; } .marke.reihe.r1 { background: #2e8a5c; }
+.reihe-nr { display: inline-block; font-size: .72rem; font-weight: 700; color: #fff; background: var(--knopf); border-radius: 6px; padding: 1px 6px; vertical-align: 1px; }

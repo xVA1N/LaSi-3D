@@ -191,3 +191,18 @@ test('Direktzurren an bündig am Rand stehender Ladung: Zurrpunkt außen am Rahm
   assert.ok(Math.abs(links.a.z - -1.305) < 1e-9);
   assert.ok(links.d.z < 0 && links.d.z > -0.2); // fast senkrecht
 });
+
+test('Ladereihen: nebeneinander eine Reihe, hintereinander nummeriert von vorne', async () => {
+  const { ladereihen } = await import('../src/modell.js');
+  const { FAHRZEUGE, beispiel } = await import('../src/daten.js');
+  const sattel = FAHRZEUGE.find((f) => f.id === 'sattel');
+  const r = pruefe({ ...beispiel('sattel'), flaeche: sattel });
+  const reihen = ladereihen(r.ergebnisse.map((e) => e.einheit));
+  assert.equal(reihen.length, 5); // 4 Reihen Mauersteine + Papierrolle
+  assert.deepEqual(reihen.map((x) => x.ids.length), [2, 2, 2, 2, 1]);
+  assert.ok(reihen[0].x1 > reihen[1].x1);
+  assert.ok(Math.abs(reihen[0].x1 - 6.8) < 1e-9);
+  // leicht versetzt nebeneinander zählt noch als eine Reihe
+  const versetzt = ladereihen([{ id: 'a', f: { x0: 0, x1: 1.2 } }, { id: 'b', f: { x0: 0.3, x1: 1.5 } }]);
+  assert.equal(versetzt.length, 1);
+});
