@@ -79,7 +79,7 @@ ul.meldungen { margin: 0 0 8px; padding-left: 18px; font-size: .85rem; }
 .step { display: flex; align-items: stretch; border: 1px solid var(--rand); border-radius: 12px; overflow: hidden; background: var(--hg); }
 .step button { width: 46px; padding: 0; border-radius: 0; background: var(--feld); color: var(--knopf); font-size: 22px; }
 .step input { flex: 1; min-width: 0; width: 100%; border: 0; background: transparent; color: var(--text); text-align: center; font: 600 17px system-ui, sans-serif; padding: 10px 0; }
-.step .einh { align-self: center; padding-right: 8px; font-size: .85rem; color: var(--leise); }
+.step .einh { align-self: center; padding-right: 8px; font-size: .85rem; color: var(--leise); white-space: nowrap; }
 .drei { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
 .drei .step button { width: 30px; font-size: 18px; }
 .drei .step input { font-size: 15px; }

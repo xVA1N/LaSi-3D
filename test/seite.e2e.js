@@ -251,6 +251,26 @@ await seite.evaluate((id) => document.querySelector('[data-waehle="' + id + '"]'
 await seite.click('[data-aktion="loeschen"]'); await kurz();
 pruefe(!(await lage()).gurte.some((g) => g.art === 'direkt'), 'Mit der Ladung gehen auch ihre Direktzurrungen');
 
+// Einzelgurt frei spannen
+await seite.selectOption('#fahrzeug', 'sattel'); await seite.click('#beispiel'); await kurz();
+await seite.click('#ladegut-neu'); await seite.click('[data-ladegut="gitterbox"]'); await kurz();
+const box3 = await seite.evaluate(() => window.lasi.auswahl().id);
+await seite.evaluate((id) => window.lasi.setze(id, { z: 0, x: 1.0 }), box3); await kurz();
+await seite.click('[data-aktion="gurt"]'); await seite.click('[data-neu="frei"]'); await kurz();
+let eg = (await lage()).gurte.find((g) => g.variante === 'frei');
+pruefe(eg && eg.ziel === box3 && await seite.isVisible('[data-ecke="hl"].an'), 'Einzelgurt angelegt, Fenster zum Einstellen offen');
+const anker0 = eg.ankerX;
+await seite.click('[data-ecke="vr"]'); await kurz();
+await seite.click('[data-ankerseite="r"]'); await kurz();
+await seite.click('[data-feld="ankerab"] [data-d="-1"]'); await kurz(); // einen Zurrpunkt näher zur Stirnwand
+eg = (await lage()).gurte.find((g) => g.variante === 'frei');
+pruefe(eg.ecke === 'vr' && eg.ankerSeite === 'r' && Math.abs(eg.ankerX - (anker0 + 0.5)) < 1e-9, 'Ecke, Rahmenseite und Zurrpunkt lassen sich wählen');
+await seite.click('[data-blatt="fertig"]');
+await seite.click('[data-schub="0,1"]'); await kurz();
+pruefe(Math.abs((await lage()).gurte.find((g) => g.variante === 'frei').ankerX - (anker0 + 1.0)) < 1e-9, 'Pfeil springt zum nächsten Zurrpunkt');
+pruefe((await seite.textContent('#leiste-titel')).includes('Einzelgurt') && (await seite.textContent('#leiste-status')).includes('ab Stirnwand'), 'Leiste zeigt Einzelgurt und Zurrpunkt');
+await seite.click('[data-aktion="loeschen"]'); await kurz();
+
 // Übermaß: Nutzlast, Überstand hinten mit Fahne, zu breit
 await seite.selectOption('#fahrzeug', 'sattel'); await seite.click('#beispiel'); await kurz();
 await seite.fill('#nutzlast', '5000'); await seite.waitForTimeout(250);

@@ -166,7 +166,10 @@ export function direktLage(g, einheit, flaeche) {
   const vorne = g.ecke[0] === 'v', links = g.ecke[1] === 'l';
   const f = einheit.f;
   const p = { x: vorne ? f.x1 : f.x0, y: Math.min(g.anschlag ?? 0.3, einheit.hoehe), z: links ? f.z0 : f.z1 };
-  const a = { x: Math.min(Math.max(p.x + (vorne ? 1 : -1) * g.abstand, -L), L), y: 0, z: links ? -B : B };
+  // frei gespannt: fester Zurrpunkt am Rahmen (ankerX, ankerSeite); sonst `abstand` von der Ecke auf derselben Seite
+  const a = g.ankerX != null
+    ? { x: Math.min(Math.max(g.ankerX, -L), L), y: 0, z: (g.ankerSeite ?? g.ecke[1]) === 'l' ? -B : B }
+    : { x: Math.min(Math.max(p.x + (vorne ? 1 : -1) * g.abstand, -L), L), y: 0, z: links ? -B : B };
   const v = { x: a.x - p.x, y: a.y - p.y, z: a.z - p.z };
   const n = Math.hypot(v.x, v.y, v.z) || 1;
   const d = { x: v.x / n, y: v.y / n, z: v.z / n };
@@ -388,3 +391,12 @@ export function ladereihen(einheiten) {
   }
   return reihen.sort((a, b) => b.x1 - a.x1).map((r, i) => ({ nr: i + 1, ...r }));
 }
+
+/** Zurrpunkte am Außenrahmen: alle 0,5 m, der erste 0,25 m hinter der Stirnwand */
+export function zurrpunkte(laenge) {
+  const punkte = [];
+  for (let x = laenge / 2 - 0.25; x > -laenge / 2; x -= 0.5) punkte.push(Math.round(x * 1000) / 1000);
+  return punkte;
+}
+/** Nächster Zurrpunkt zu x */
+export const naechsterZurrpunkt = (laenge, x) => zurrpunkte(laenge).reduce((a, b) => (Math.abs(b - x) < Math.abs(a - x) ? b : a));

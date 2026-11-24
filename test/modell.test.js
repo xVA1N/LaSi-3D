@@ -235,3 +235,19 @@ test('Lose hochkant stehende Palette wird gemeldet, als Füllmittel nicht', () =
   const fueller = pruefe({ objekte: [hochkant('p', 6.8 - 0.072)], flaeche, gurte: [] });
   assert.ok(!fueller.hinweise.some((h) => h.art === 'lose'));
 });
+
+test('Frei gespannter Gurt: fester Zurrpunkt, auch auf der anderen Seite', async () => {
+  const { zurrpunkte, naechsterZurrpunkt } = await import('../src/modell.js');
+  assert.equal(zurrpunkte(13.6)[0], 6.55);
+  assert.equal(zurrpunkte(13.6).length, 27);
+  assert.equal(naechsterZurrpunkt(13.6, -1.3), -1.45);
+  const k = kiste('k', 0, 0, { b: 1.0 });
+  const g = { id: 'f', art: 'direkt', variante: 'frei', ziel: 'k', ecke: 'hl', ankerX: -1.45, ankerSeite: 'r', anschlag: 0.5, lc: 2500 };
+  const r = pruefe({ objekte: [k], flaeche, gurte: [g] });
+  const info = r.gurte[0];
+  assert.equal(info.a.x, -1.45);
+  assert.ok(Math.abs(info.a.z - 1.305) < 1e-9); // rechter Rahmen, obwohl die Ecke links ist
+  assert.ok(info.d.z > 0 && info.d.x < 0);
+  // zieht nach hinten-rechts: hält gegen Rutschen nach vorne und nach links
+  assert.ok(r.ergebnisse[0].richtungen.vorwaerts.hat > 0);
+});
