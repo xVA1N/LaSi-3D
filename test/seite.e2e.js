@@ -28,6 +28,20 @@ const lage = () => seite.evaluate(() => window.lasi.zustand());
 const objektById = async (id) => (await lage()).objekte.find((o) => o.id === id);
 
 pruefe(await seite.evaluate(() => window.lasi.ansicht()) === 'oben', 'Startet in der Draufsicht');
+// Draufsicht: nur vor/zurück und zoomen; quer bleibt fest
+await seite.click('#leeren').catch(() => {});
+const sicht0 = await seite.evaluate(() => window.lasi.obenSicht());
+await seite.mouse.move(150, 400); await seite.mouse.down();
+for (let i = 1; i <= 10; i++) await seite.mouse.move(150 + i * 25, 400 + i * 20);
+await seite.mouse.up(); await seite.waitForTimeout(400);
+const sicht1 = await seite.evaluate(() => window.lasi.obenSicht());
+pruefe(Math.abs(sicht1.z - sicht0.z) < 1e-6, 'Draufsicht lässt sich nicht zur Seite schieben');
+pruefe(Math.abs(sicht1.x - sicht0.x) > 0.3, 'Draufsicht lässt sich vor und zurück schieben');
+await seite.mouse.move(400, 400);
+for (let i = 0; i < 30; i++) await seite.mouse.wheel(0, 400);
+await seite.waitForTimeout(400);
+const sicht2 = await seite.evaluate(() => window.lasi.obenSicht());
+pruefe(sicht2.zoom >= sicht2.minZoom - 1e-9 && Math.abs(sicht2.z - sicht0.z) < 1e-6, 'Herauszoomen höchstens bis zur ganzen Fläche, quer weiter fest');
 await seite.click('#beispiel'); await kurz();
 pruefe((await status()).includes('✓'), 'Beispiel Sattelauflieger ist gesichert');
 
