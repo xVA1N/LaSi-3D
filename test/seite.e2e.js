@@ -148,6 +148,27 @@ for (let i = 1; i <= 10; i++) await seite.mouse.move(q.x - i * 12, q.y + i * 4);
 await seite.mouse.up(); await kurz();
 pruefe(Math.abs((await objektById(box)).x - x3) > 0.2, 'Ziehen in 3D verschiebt');
 
+// Übermaß: Nutzlast, Überstand hinten mit Fahne, zu breit
+await seite.selectOption('#fahrzeug', 'sattel'); await seite.click('#beispiel'); await kurz();
+await seite.fill('#nutzlast', '5000'); await seite.waitForTimeout(250);
+pruefe((await status()).includes('Übermaß') && (await seite.textContent('#ergebnis')).includes('Zu schwer'), 'Zu schwer wird gemeldet');
+await seite.fill('#nutzlast', '24000'); await seite.waitForTimeout(250);
+pruefe((await status()).includes('✓'), 'Mit passender Nutzlast wieder in Ordnung');
+await seite.click('#ladegut-neu'); await seite.click('[data-ladegut="holzkiste"]'); await kurz();
+const lang = await seite.evaluate(() => window.lasi.auswahl().id);
+await seite.evaluate((id) => window.lasi.setze(id, { l: 3.0, x: -6.8 + 1.5 - 1.2, z: 0 }), lang); await kurz();
+const um = await seite.evaluate(() => window.lasi.uebermass());
+pruefe(Math.abs(um.ueberHinten - 1.2) < 1e-6 && um.fahne, 'Überstand 1,2 m: Fahne wird gesetzt');
+pruefe((await seite.textContent('#marken')).includes('Überstand 1,2 m'), 'Überstand wird in der Ansicht beschriftet');
+pruefe((await seite.textContent('#ergebnis')).includes('Fahne oder Schild'), 'Kennzeichnungspflicht wird genannt');
+await seite.evaluate((id) => window.lasi.setze(id, { x: -6.8 + 1.5 - 2.0 }), lang); await kurz();
+pruefe((await seite.textContent('#ergebnis')).includes('100 km'), 'Über 1,5 m: Hinweis auf 100-km-Regel');
+await seite.evaluate((id) => window.lasi.setze(id, { x: 2, b: 2.8, l: 1.2 }), lang); await kurz();
+pruefe((await seite.textContent('#ergebnis')).includes('Zu breit') && (await seite.textContent('#marken')).includes('Breite 2,8'), 'Zu breit wird gemeldet und markiert');
+await seite.evaluate((id) => window.lasi.setze(id, { x: -6.8 + 1.5 - 1.2, b: 1.0, l: 3.0 }), lang); await kurz();
+await seite.click('[data-schub="0,-1"]'); await kurz();
+pruefe((await seite.evaluate(() => window.lasi.uebermass())).ueberHinten > 1.2, 'Pfeil schiebt weiter über die Hinterkante');
+
 for (const f of ['motorwagen', 'klein']) {
   await seite.selectOption('#fahrzeug', f);
   await seite.click('#beispiel'); await kurz();

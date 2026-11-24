@@ -2,13 +2,15 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { pruefe, fussabdruck, fugenReibung, rechenkraftDaN, kopfLage, STIRNWAND_KRAFT_N, MU_RHM } from './modell.js';
 import { FAHRZEUGE, LADEGUT, HILFSMITTEL, GURTTYPEN, MATERIALIEN, beispiel } from './daten.js';
-import { bewegGruppe, vereinigung, anWand, verschiebe, abstandVorne, unterlage, setzeUnterlage, freierGurtX } from './aktionen.js';
+import { bewegGruppe, vereinigung, anWand, verschiebe, abstandVorne, unterlage, setzeUnterlage, freierGurtX, UEBERSTAND_MAX } from './aktionen.js';
+import { pruefeUebermass, GRENZEN } from './uebermass.js';
 
 // ---------- Zustand ----------
 const SPEICHER = 'lasi3d-beladung';
 let zustand = lade() ?? { fahrzeugId: 'sattel', ...beispiel('sattel') };
 let auswahl = null; // { art: 'objekt' | 'gurt', id }
 let ergebnis = null;
+let uebermass = null;
 let ansicht = 'oben';
 try { ansicht = localStorage.getItem('lasi3d-ansicht') === '3d' ? '3d' : 'oben'; } catch { /* ohne Speicher: Draufsicht */ }
 let zaehler = 0;
@@ -304,6 +306,7 @@ function zeichne() {
   anklickbar = [];
   const status = new Map();
   for (const e of ergebnis.ergebnisse) for (const m of e.einheit.mitglieder) status.set(m.id, e.ok);
+  for (const m of uebermass.meldungen) if (m.id) status.set(m.id, false);
   for (const o of zustand.objekte) {
     const gew = auswahl?.art === 'objekt' && auswahl.id === o.id;
     baueObjekt(o, ergebnis.lage.get(o.id).y, o.typ === 'ladung' ? status.get(o.id) : undefined, gew, o.hochkant && deckNachMinus(o));
@@ -312,8 +315,52 @@ function zeichne() {
     const info = ergebnis.gurte.find((i) => i.id === g.id), gew = auswahl?.art === 'gurt' && auswahl.id === g.id;
     if (g.art === 'kopf') baueKopf(g, info, gew); else baueGurt(g, info, gew);
   }
+  baueUebermass();
   baueMarken();
   baueMini();
+}
+
+// Markierungen bei Übermaß: Fahne am Überstand, Maßlinie, rote Grenzflächen für Breite und Höhe
+function baueUebermass() {
+  const { laenge: L, breite: B, hoehe: H } = fahrzeug();
+  const rot = mat(0xd32f2f, { roughness: 0.6 });
+  const grenze = mat(0xe53935, { transparent: true, opacity: 0.18, depthWrite: false, side: THREE.DoubleSide });
+  const u = uebermass;
+  if (u.ueberHinten > 0.005) {
+    // Maßlinie auf Höhe der Ladefläche von der Kante bis zum Ende der Ladung
+    const z = Math.min(Math.max(u.fahne?.z ?? 0, -B / 2), B / 2);
+    ladungGruppe.add(kasten(u.ueberHinten, 0.02, 0.04, rot, -L / 2 - u.ueberHinten / 2, H - 0.05, z));
+    for (const x of [-L / 2, -L / 2 - u.ueberHinten]) ladungGruppe.add(kasten(0.02, 0.18, 0.04, rot, x, H - 0.05, z));
+  }
+  if (u.fahne) {
+    const { x, y, z } = u.fahne;
+    ladungGruppe.add(kasten(0.02, 0.5, 0.02, mat(0x444444), x - 0.03, H + y + 0.05, z)); // Stab
+    ladungGruppe.add(kasten(0.01, 0.3, 0.3, mat(0xff3b30, { emissive: 0x551010 }), x - 0.04, H + y + 0.13, z + 0.16)); // Fahne 30 × 30 cm
+  }
+  const x0 = -L / 2 - u.ueberHinten, laengeZone = L + u.ueberHinten;
+  // Grenzlinien für Breite, auch in der Draufsicht sichtbar (immer obenauf gezeichnet)
+  if (u.zuBreit) {
+    const linie = new THREE.LineBasicMaterial({ color: 0xe53935, depthTest: false });
+    for (const s of [-1, 1]) {
+      const geo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(x0, H + 0.02, s * GRENZEN.breite / 2), new THREE.Vector3(L / 2, H + 0.02, s * GRENZEN.breite / 2)]);
+      const l = new THREE.Line(geo, linie);
+      l.renderOrder = 10;
+      ladungGruppe.add(l);
+    }
+  }
+  if (u.zuBreit) {
+    for (const s of [-1, 1]) {
+      const ebene = new THREE.Mesh(new THREE.PlaneGeometry(laengeZone, GRENZEN.hoehe - 0.3), grenze);
+      ebene.position.set(x0 + laengeZone / 2, (GRENZEN.hoehe + 0.3) / 2, s * GRENZEN.breite / 2);
+      ladungGruppe.add(ebene);
+    }
+  }
+  if (u.zuHoch) {
+    const ebene = new THREE.Mesh(new THREE.PlaneGeometry(laengeZone, GRENZEN.breite), grenze);
+    ebene.rotation.x = -Math.PI / 2;
+    ebene.position.set(x0 + laengeZone / 2, GRENZEN.hoehe, 0);
+    ladungGruppe.add(ebene);
+  }
 }
 
 // ---------- Beschriftungen über der Ansicht ----------
@@ -342,6 +389,23 @@ function baueMarken() {
       marke('name', `${esc(kurz)}<small>${zahl(o.masse, 0)} kg</small>`, new THREE.Vector3(o.x, H + ergebnis.lage.get(o.id).y + o.h, o.z), true);
     }
   }
+  if (uebermass.ueberHinten > 0.005) {
+    const z = Math.min(Math.max(uebermass.fahne?.z ?? 0, -B / 2), B / 2);
+    marke(uebermass.ueberHinten > GRENZEN.kennzeichnungAb ? 'warnung' : 'mass', `Überstand ${laenge(uebermass.ueberHinten)}`, new THREE.Vector3(-L / 2 - uebermass.ueberHinten / 2, H, z));
+  }
+  const seitlich = Math.max(uebermass.ueberLinks, uebermass.ueberRechts);
+  if (seitlich > 0.005) {
+    // am Teil, das am weitesten übersteht
+    const rechts = uebermass.ueberRechts >= uebermass.ueberLinks;
+    const teil = zustand.objekte.reduce((a, b) => {
+      const fa = fussabdruck(a), fb = fussabdruck(b);
+      return (rechts ? fb.z1 > fa.z1 : fb.z0 < fa.z0) ? b : a;
+    });
+    const f = fussabdruck(teil);
+    marke(uebermass.zuBreit ? 'warnung' : 'mass', `seitlich ${laenge(seitlich)} · Breite ${zahl(uebermass.breite, 2)} m`,
+      new THREE.Vector3(teil.x, H + ergebnis.lage.get(teil.id).y + teil.h, rechts ? f.z1 : f.z0));
+  }
+  if (uebermass.zuHoch) marke('warnung', `Höhe ${zahl(uebermass.hoehe, 2)} m`, new THREE.Vector3(0, GRENZEN.hoehe, 0));
   const o = gewaehltesObjekt();
   if (o) {
     const a = abstandVorne(zustand.objekte, ergebnis.lage, o, fahrzeug());
@@ -364,7 +428,9 @@ function setzeMarken() {
     const weg = projektion.z > 1 || x < -100 || x > w + 100 || y < -50 || y > h + 50 || (m.nurOben && ansicht !== 'oben') || (klein && m.klasse === 'name');
     m.el.style.display = weg ? 'none' : '';
     if (weg) continue;
-    const links = m.klasse === 'abstand' ? Math.min(Math.max(x, 8), w - m.el.offsetWidth - 8) : x;
+    const halb = m.el.offsetWidth / 2;
+    const links = m.klasse === 'abstand' ? Math.min(Math.max(x, 8), w - m.el.offsetWidth - 8)
+      : m.klasse === 'warnung' || m.klasse === 'mass' ? Math.min(Math.max(x, halb + 8), w - halb - 8) : x;
     m.el.style.left = `${links}px`;
     m.el.style.top = `${m.klasse === 'abstand' ? Math.max(y, m.el.offsetHeight + 56) : y}px`;
   }
@@ -429,6 +495,7 @@ let geplant = false;
 function aktualisiere() {
   zustand.gurte = zustand.gurte.filter((g) => g.art !== 'kopf' || objekt(g.ziel));
   ergebnis = pruefe({ ...zustand, flaeche: fahrzeug() });
+  uebermass = pruefeUebermass({ objekte: zustand.objekte, lage: ergebnis.lage, fahrzeug: fahrzeug(), nutzlast: zustand.nutzlast });
   if (auswahl && !(gewaehltesObjekt() || gewaehlterGurt())) auswahl = null;
   zeichne();
   zeigeErgebnis();
@@ -467,7 +534,7 @@ function objektStatus(o) {
   if (!e.kippen.laengs.ok) probleme.push('kippt längs');
   const ids = new Set(e.einheit.mitglieder.map((m) => m.id));
   if (ergebnis.hinweise.some((h) => h.art === 'kollision' && h.ids.some((i) => ids.has(i)))) probleme.push('überschneidet sich');
-  if (ergebnis.hinweise.some((h) => h.art === 'ueberstand' && ids.has(h.id))) probleme.push('steht über');
+  if (uebermass.meldungen.some((m) => m.art === 'auflage' && ids.has(m.id))) probleme.push('kippt über die Kante');
   if (!probleme.length) {
     const max = Math.max(...Object.values(e.richtungen).filter((d) => !d.formschluss && d.brauch > 0).map((d) => d.auslastung), 0);
     return { ok: true, text: max > 0 ? `✓ gesichert · höchstens ${zahl(max * 100, 0)} % ausgelastet` : '✓ gesichert' };
@@ -491,8 +558,21 @@ function zeigeErgebnis() {
   const r = ergebnis;
   const offen = r.ergebnisse.filter((e) => !e.ok).length;
   const leer = r.ergebnisse.length === 0;
-  $('status').textContent = leer ? 'Keine Ladung' : r.ok ? '✓ Ladung gesichert' : `✗ ${offen ? `${offen} von ${r.ergebnisse.length} nicht gesichert` : 'Hinweise prüfen'}`;
-  $('status').className = `status ${leer ? '' : r.ok ? 'gut' : 'schlecht'}`;
+  const um = uebermass, umFehler = um.meldungen.filter((m) => m.stufe === 'fehler');
+  const alles = r.ok && um.ok;
+  $('status').textContent = leer ? 'Keine Ladung'
+    : alles ? `✓ Ladung gesichert${um.meldungen.some((m) => m.stufe === 'pflicht') ? ' · Kennzeichnung nötig' : ''}`
+    : `✗ ${[offen ? `${offen} nicht gesichert` : '', umFehler.length ? 'Übermaß' : '', !offen && !umFehler.length ? 'Hinweise prüfen' : ''].filter(Boolean).join(' · ')}`;
+  $('status').className = `status ${leer ? '' : alles ? 'gut' : 'schlecht'}`;
+  const zeile = (name, wert, grenze, ok) => `<tr><td>${name}</td><td class="${ok ? 'gut' : 'schlecht'}">${wert}</td><td>${grenze}</td></tr>`;
+  const m2 = (v) => `${zahl(v, 2)} m`;
+  const masse = `<div class="masse"><b>Maße und Gewicht</b><table>
+    ${zeile('Gewicht', `${zahl(um.masse, 0)} kg`, `max. ${zahl(um.nutzlast, 0)} kg`, um.masse <= um.nutzlast)}
+    ${zeile('Breite', m2(um.breite), `max. ${m2(GRENZEN.breite)}`, !um.zuBreit)}
+    ${zeile('Höhe', m2(um.hoehe), `max. ${m2(GRENZEN.hoehe)}`, !um.zuHoch)}
+    ${zeile('Länge', m2(um.laenge), `max. ${m2(um.laengeMax)}`, um.laenge <= um.laengeMax + 1e-9)}
+    ${zeile('Überstand hinten', m2(um.ueberHinten), `max. ${m2(GRENZEN.ueberstandHinten)}`, um.ueberHinten <= GRENZEN.ueberstandHinten + 1e-9)}
+    </table>${um.meldungen.length ? `<ul class="meldungen">${um.meldungen.map((x) => `<li class="${x.stufe === 'fehler' ? 'schlecht' : x.stufe === 'pflicht' ? 'pflicht' : ''}">${esc(x.text)}</li>`).join('')}</ul>` : ''}</div>`;
   const meldungen = r.hinweise.map((h) => `<li class="${h.art === 'gurt' ? '' : 'schlecht'}">${esc(h.text)}</li>`).join('');
   const wand = r.stirnwandLast > 0 ? `<p class="werte">Stirnwand: ${zahl(r.stirnwandLast / 10, 0)} daN von ${zahl(STIRNWAND_KRAFT_N / 10, 0)} daN</p>` : '';
   const karten = r.ergebnisse.map((e) => {
@@ -514,7 +594,7 @@ function zeigeErgebnis() {
         <tr><td>Kippen längs</td><td class="${kl.ok ? 'gut' : 'schlecht'}">${kl.ok ? 'standsicher' : 'kippt, anders sichern'}</td></tr>
       </table></div>`;
   }).join('');
-  $('ergebnis').innerHTML = `${meldungen ? `<ul class="meldungen">${meldungen}</ul>` : ''}${wand}${karten || '<p class="werte">Noch keine Ladung auf der Fläche.</p>'}`;
+  $('ergebnis').innerHTML = `${masse}${meldungen ? `<ul class="meldungen">${meldungen}</ul>` : ''}${wand}${karten || '<p class="werte">Noch keine Ladung auf der Fläche.</p>'}`;
 }
 
 // ---------- Leiste am ausgewählten Teil ----------
@@ -953,8 +1033,10 @@ function einrasten(o, bewegt) {
   o.x += sprung(kandX);
   o.z += sprung(kandZ);
   f = fussabdruck(o);
-  o.x += Math.max(0, -L / 2 - f.x0) - Math.max(0, f.x1 - L / 2);
-  o.z += Math.max(0, -B / 2 - f.z0) - Math.max(0, f.z1 - B / 2);
+  // vorne bis zur Stirnwand, hinten und seitlich darf Ladung überstehen
+  const hinten = -L / 2 - UEBERSTAND_MAX.hinten, quer = B / 2 + UEBERSTAND_MAX.seitlich;
+  o.x += Math.max(0, hinten - f.x0) - Math.max(0, f.x1 - L / 2);
+  o.z += Math.max(0, Math.min(-quer - f.z0, 0)) - Math.max(0, f.z1 - quer);
 }
 
 // Erfasst den Druck vor der Kamerasteuerung, damit Ziehen die Ansicht nicht bewegt
@@ -1042,7 +1124,10 @@ document.querySelector('.ansicht').addEventListener('click', (ev) => {
 // ---------- Bedienfeld ----------
 $('fahrzeug').innerHTML = FAHRZEUGE.map((f) => `<option value="${f.id}">${esc(f.name)}</option>`).join('');
 $('fahrzeug').value = fahrzeug().id;
-$('fahrzeug').addEventListener('change', () => { zustand.fahrzeugId = $('fahrzeug').value; speichere(); baueFahrzeug(); aktualisiere(); });
+const zeigeNutzlast = () => { $('nutzlast').value = zustand.nutzlast > 0 ? zustand.nutzlast : fahrzeug().nutzlast; };
+$('fahrzeug').addEventListener('change', () => { zustand.fahrzeugId = $('fahrzeug').value; zustand.nutzlast = 0; zeigeNutzlast(); speichere(); baueFahrzeug(); aktualisiere(); });
+$('nutzlast').addEventListener('input', () => { const v = +$('nutzlast').value; if (v > 0) { zustand.nutzlast = v; speichere(); aktualisiereBald(); } });
+zeigeNutzlast();
 $('ladegut-neu').addEventListener('click', oeffneKatalog);
 $('palette-neu').addEventListener('click', () => neuesObjekt(HILFSMITTEL.find((v) => v.art === 'europalette')));
 $('rhm-neu').addEventListener('click', () => neuesObjekt(HILFSMITTEL.find((v) => v.art === 'rhm')));
@@ -1069,6 +1154,9 @@ setzeAnsicht(ansicht, true);
 // für die Seitentests
 window.lasi = {
   zustand: () => zustand, ergebnis: () => ergebnis, auswahl: () => auswahl, ansicht: () => ansicht,
+  uebermass: () => uebermass,
+  // Werte eines Objekts direkt setzen (für die Tests)
+  setze(id, werte) { Object.assign(objekt(id), werte); aendere(); },
   // Kamera nah an einen Punkt der Ladefläche (für Bilder in den Tests)
   nah(x, z, abstand = 3) {
     const H = fahrzeug().hoehe;

@@ -253,10 +253,6 @@ export function pruefe({ objekte, gurte, flaeche }) {
       if (ueberlappt(einheiten[i].basis, einheiten[j].basis)) hinweise.push({ art: 'kollision', ids: [einheiten[i].id, einheiten[j].id], text: 'Zwei Ladeeinheiten überschneiden sich.' });
     }
   }
-  for (const o of objekte) {
-    const f = fussabdruck(o);
-    if (f.x0 < -L / 2 - 1e-6 || f.x1 > L / 2 + 1e-6 || f.z0 < -B / 2 - 1e-6 || f.z1 > B / 2 + 1e-6) hinweise.push({ art: 'ueberstand', id: o.id, text: `${o.name} steht über die Ladefläche hinaus.` });
-  }
 
   return { ergebnisse, gurte: gurtInfo, lage, stirnwandLast, hinweise, ok: ergebnisse.every((e) => e.ok) && !hinweise.some((h) => h.art !== 'gurt') };
 }
