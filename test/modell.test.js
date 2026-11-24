@@ -251,3 +251,34 @@ test('Frei gespannter Gurt: fester Zurrpunkt, auch auf der anderen Seite', async
   // zieht nach hinten-rechts: hält gegen Rutschen nach vorne und nach links
   assert.ok(r.ergebnisse[0].richtungen.vorwaerts.hat > 0);
 });
+
+const rohr = (id, x, z = 0, mehr = {}) => ({ id, typ: 'ladung', art: 'rohr', name: 'Stahlrohr', form: 'rohr', material: 'stahl', masse: 1200, l: 6, b: 0.5, h: 0.5, x, z, drehung: 0, ...mehr });
+const bucht = (id, ziel, seite, x, mehr = {}) => ({ id, art: 'bucht', ziel, seite, x, lc: 2500, stf: 500, ...mehr });
+
+test('Liegendes Rohr rollt seitlich: ohne Reibung, Niederzurren hält nicht', () => {
+  const r = pruefe({ objekte: [rohr('r', 0)], flaeche, gurte: [gurt('g1', -1.5, 500), gurt('g2', 1.5, 500)] });
+  const s = r.ergebnisse[0].richtungen.seitlich;
+  assert.equal(s.rollt, true);
+  assert.equal(s.ok, false);
+  assert.ok(Math.abs(s.brauch - 0.5 * 1200 * 9.81 * 1.1) < 1e-6); // μ = 0
+  assert.equal(r.ergebnisse[0].richtungen.rueckwaerts.rollt, false); // längs rutscht es normal
+  // auf Kanthölzern mit Keilen: rutscht nur noch, 4 Gurte (flacher Winkel, daher mehr als 2)
+  const mitKeilen = pruefe({ objekte: [rohr('r', 0, 0, { keile: true, h: 0.6 })], flaeche, gurte: [-2, -1, 1, 2].map((x, i) => gurt('k' + i, x, 500)) });
+  assert.equal(mitKeilen.ergebnisse[0].richtungen.seitlich.rollt, false);
+  assert.equal(mitKeilen.ergebnisse[0].richtungen.seitlich.ok, true);
+});
+
+test('Buchtlashing: ein Paar hält das Rohr seitlich, eine Schlinge allein nicht', () => {
+  const paar = pruefe({ objekte: [rohr('r', 0)], flaeche, gurte: [bucht('a', 'r', 'l', -1.5), bucht('b', 'r', 'r', -1.3)] });
+  const s = paar.ergebnisse[0].richtungen.seitlich;
+  assert.equal(s.ok, true);
+  assert.equal(s.methode, 'bucht');
+  // oberer Schenkel von (0,425 | −0,25) zum Zurrpunkt (0 | −1,305), unterer von (0,02 | 0)
+  const n1 = Math.hypot(1.055, 0.425), n2 = Math.hypot(1.305, 0.02);
+  const proSchlinge = 25000 * (1.055 / n1 + 0 * 0.425 / n1) + 25000 * (1.305 / n2); // μ = 0 beim Rollen
+  assert.ok(s.hat >= proSchlinge * 0.99);
+  const allein = pruefe({ objekte: [rohr('r', 0)], flaeche, gurte: [bucht('a', 'r', 'l', -1.5)] });
+  assert.equal(allein.ergebnisse[0].richtungen.seitlich.ok, false);
+  const daneben = pruefe({ objekte: [rohr('r', 0)], flaeche, gurte: [bucht('a', 'r', 'l', 5)] });
+  assert.match(daneben.gurte[0].mangel, /neben der Ladung/);
+});

@@ -255,7 +255,7 @@ const ladungGruppe = new THREE.Group();
 szene.add(ladungGruppe);
 let anklickbar = [];
 
-const FARBEN = { holzkiste: 0xc89b5f, gitterbox: 0x9aa3ab, ibc: 0xf2f2ee, fass: 0x1f5fa8, papierrolle: 0xd9c39a, kunststoffkisten: 0x2f7fd0, mauersteine: 0xd98a5a, europalette: 0xd2b48c, rhm: 0x23272a };
+const FARBEN = { rohr: 0x6f7c86, holzkiste: 0xc89b5f, gitterbox: 0x9aa3ab, ibc: 0xf2f2ee, fass: 0x1f5fa8, papierrolle: 0xd9c39a, kunststoffkisten: 0x2f7fd0, mauersteine: 0xd98a5a, europalette: 0xd2b48c, rhm: 0x23272a };
 const css = (farbe) => `#${farbe.toString(16).padStart(6, '0')}`;
 
 // Europalette liegend (dx × dz, 144 mm hoch): 5 Deckbretter und 3 Bodenbretter längs der 1,2-m-Seite,
@@ -294,6 +294,29 @@ function baueObjekt(o, y, status, gewaehlt, deckNachMinus = false) {
     g.add(europalette(l, b));
   } else if (o.typ === 'rhm') {
     g.add(kasten(l, h, b, mat(FARBEN.rhm), 0, h / 2, 0));
+  } else if (o.form === 'rohr') {
+    // liegendes Rohr, Achse in Längsrichtung des Objekts; auf Wunsch auf Kanthölzern mit Keilen
+    const r = b / 2, yc = h - r;
+    const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, l, 32, 1, true).rotateZ(Math.PI / 2), mat(FARBEN.rohr, { metalness: 0.6, roughness: 0.4, side: THREE.DoubleSide }));
+    m.position.y = yc;
+    m.castShadow = true; // kein eigener Schatten auf der offenen Röhre (sonst Streifen)
+    g.add(m);
+    for (const s of [-1, 1]) {
+      const ring = new THREE.Mesh(new THREE.RingGeometry(r * 0.86, r, 32).rotateY(s * Math.PI / 2), mat(0x8a96a0, { metalness: 0.6, side: THREE.DoubleSide }));
+      ring.position.set(s * l / 2, yc, 0);
+      g.add(ring);
+    }
+    if (o.keile) {
+      const holz = mat(0xa8865a), keil = mat(0x7a5a36);
+      for (const x of [-l / 2 + Math.min(0.6, l / 4), l / 2 - Math.min(0.6, l / 4)]) {
+        g.add(kasten(0.12, 0.1, b + 0.3, holz, x, 0.05, 0));
+        for (const s of [-1, 1]) {
+          const k = kasten(0.12, 0.1, 0.12, keil, x, 0.14, s * (r * 0.62));
+          k.rotation.x = s * Math.PI / 4;
+          g.add(k);
+        }
+      }
+    }
   } else if (o.form === 'zylinder') {
     const m = new THREE.Mesh(new THREE.CylinderGeometry(l / 2, l / 2, h, 32), mat(FARBEN[o.art] ?? 0x888888, { metalness: o.material === 'stahl' ? 0.3 : 0 }));
     m.position.y = h / 2;
@@ -419,6 +442,39 @@ function baueDirekt(g, info, gewaehlt) {
   if (gewaehlt) ladungGruppe.add(kasten(0.12, 0.12, 0.12, mat(0xffc400, { emissive: 0x664400 }), a.x, a.y - 0.05, a.z)); // genutzter Zurrpunkt
 }
 
+function baueBucht(g, info, gewaehlt) {
+  if (!info?.getroffen.length) return;
+  const { hoehe: H } = fahrzeug();
+  const e = ergebnis.ergebnisse.find((x) => x.id === info.getroffen[0])?.einheit;
+  const links = g.seite === 'l', zc = (info.z0 + info.z1) / 2;
+  let punkte;
+  if (e?.rund) {
+    // um den runden Querschnitt herum: von der nahen Oberseite über die Kuppe, die ferne Seite und unten zurück
+    const r = (info.z1 - info.z0) / 2 + 0.015, yc = info.hoehe - r + 0.015;
+    punkte = [];
+    for (let i = 0; i <= 15; i++) {
+      const w = (links ? 135 - i * 15 : 45 + i * 15) * Math.PI / 180;
+      punkte.push([zc + r * Math.cos(w), Math.max(yc + r * Math.sin(w), 0.02)]);
+    }
+  } else {
+    const n = links ? info.z0 - 0.015 : info.z1 + 0.015, w = links ? info.z1 + 0.015 : info.z0 - 0.015;
+    punkte = [[n, info.hoehe + 0.015], [w, info.hoehe + 0.015], [w, 0.02], [zc, 0.02]];
+  }
+  const a = new THREE.Vector3(g.x, H, info.a.z);
+  const v = [a, ...punkte.map(([z, y]) => new THREE.Vector3(g.x, H + y, z)), a];
+  const material = gewaehlt ? mat(0xffc400, { emissive: 0x664400 }) : info.mangel ? mangelMat : mat(0xe8901a, { roughness: 0.5 });
+  for (let i = 0; i < v.length - 1; i++) {
+    if (v[i].distanceTo(v[i + 1]) < 1e-4) continue;
+    ladungGruppe.add(band(v[i], v[i + 1], material, 0.05, 0.012));
+    const treffer = band(v[i], v[i + 1], unsichtbar, 0.25, 0.2);
+    treffer.userData.ziel = { art: 'gurt', id: g.id };
+    anklickbar.push(treffer);
+    ladungGruppe.add(treffer);
+  }
+  const r = a.clone().lerp(v[1], 0.35);
+  ladungGruppe.add(kasten(0.09, 0.13, 0.06, mat(0x8a949c, { metalness: 0.6, roughness: 0.4 }), r.x, r.y, r.z));
+}
+
 function zeichne() {
   leere(ladungGruppe);
   anklickbar = [];
@@ -432,7 +488,7 @@ function zeichne() {
   }
   for (const g of zustand.gurte) {
     const info = ergebnis.gurte.find((i) => i.id === g.id), gew = auswahl?.art === 'gurt' && auswahl.id === g.id;
-    if (g.art === 'kopf') baueKopf(g, info, gew); else if (g.art === 'direkt') baueDirekt(g, info, gew); else baueGurt(g, info, gew);
+    if (g.art === 'kopf') baueKopf(g, info, gew); else if (g.art === 'direkt') baueDirekt(g, info, gew); else if (g.art === 'bucht') baueBucht(g, info, gew); else baueGurt(g, info, gew);
   }
   baueReihen();
   baueAchslast();
@@ -716,7 +772,7 @@ function objektStatus(o) {
     return { ok: true, text: o.hochkant ? '✓ gehalten (Füllmittel oder Lastverteiler)' : 'trägt keine Ladung' };
   }
   const probleme = [];
-  for (const [r, d] of Object.entries(e.richtungen)) if (!d.ok) probleme.push(d.hat === 0 ? `${RNAME[r]} ungesichert` : `${RNAME[r]} ${zahl(d.auslastung * 100, 0)} %`);
+  for (const [r, d] of Object.entries(e.richtungen)) if (!d.ok) probleme.push(d.hat === 0 ? `${RNAME[r]} ${d.rollt ? 'rollt' : 'ungesichert'}` : `${RNAME[r]} ${zahl(d.auslastung * 100, 0)} %`);
   if (!e.kippen.seitlich.ok) probleme.push('kippt quer');
   if (!e.kippen.laengs.ok) probleme.push('kippt längs');
   const ids = new Set(e.einheit.mitglieder.map((m) => m.id));
@@ -733,6 +789,10 @@ const SEITE = { hinten: 'hinten', vorne: 'vorne' };
 function gurtStatus(g) {
   const info = ergebnis.gurte.find((i) => i.id === g.id);
   if (info?.mangel) return { ok: false, text: `✗ Zurrmittel mangelhaft: ${info.mangel}` };
+  if (g.art === 'bucht') {
+    if (!info?.getroffen.length) return { ok: false, text: '✗ ohne Ladung' };
+    return { ok: true, text: `α ≈ ${zahl(info.winkel, 0)}° · Zurrpunkt ${g.seite === 'l' ? 'links' : 'rechts'}, ${zahl(fahrzeug().laenge / 2 - g.x, 2)} m ab Stirnwand` };
+  }
   if (g.art === 'direkt') {
     if (!info?.getroffen.length) return { ok: false, text: '✗ ohne Ladung' };
     if (Math.hypot(info.d.x, info.d.z) < 0.25) return { ok: false, text: '✗ Gurt fast senkrecht, hält kaum: Ladung vom Rand abrücken oder Zurrpunkt weiter weg' };
@@ -844,8 +904,8 @@ function zeigeErgebnis() {
       let text;
       if (d.formschluss) text = 'Formschluss';
       else if (d.brauch === 0) text = 'hält durch Reibung';
-      else if (d.hat === 0) text = 'ungesichert';
-      else text = `${{ kopf: 'Kopfschlinge ', direkt: 'Direktzurren ' }[d.methode] ?? ''}${zahl(d.auslastung * 100, 0)} % ausgelastet`;
+      else if (d.hat === 0) text = d.rollt ? 'rollt, ungesichert' : 'ungesichert';
+      else text = `${{ kopf: 'Kopfschlinge ', direkt: 'Direktzurren ', bucht: 'Buchtlashing ' }[d.methode] ?? ''}${zahl(d.auslastung * 100, 0)} % ausgelastet`;
       return `<tr><td>${RNAME[k]}</td><td class="${d.ok ? 'gut' : 'schlecht'}">${text}</td></tr>`;
     }).join('');
     const kq = e.kippen.seitlich, kl = e.kippen.laengs;
@@ -881,10 +941,11 @@ function zeigeLeiste() {
   } else {
     status = gurtStatus(g);
     $('leiste-titel').textContent = g.art === 'kopf' ? `Kopfschlinge ${SEITE[g.seite]} · LC ${zahl(g.lc, 0)} daN`
-      : g.art === 'direkt' ? `${ZURRART[g.variante]} · LC ${zahl(g.lc, 0)} daN` : `Zurrgurt · ${zahl(g.stf, 0)} daN`;
+      : g.art === 'direkt' ? `${ZURRART[g.variante]} · LC ${zahl(g.lc, 0)} daN`
+      : g.art === 'bucht' ? `Buchtlashing · LC ${zahl(g.lc, 0)} daN` : `Zurrgurt · ${zahl(g.stf, 0)} daN`;
     $('pad').classList.add('nur-laengs');
     $('leiste-knoepfe').classList.remove('vier');
-    $('leiste-knoepfe').innerHTML = knopf('bearbeiten', '✎', 'Bearbeiten') + (g.art === 'kopf' || g.art === 'direkt' ? '' : knopf('kopieren', '⧉', 'Kopieren')) + knopf('loeschen', '🗑', 'Löschen', 'class="rot"');
+    $('leiste-knoepfe').innerHTML = knopf('bearbeiten', '✎', 'Bearbeiten') + (g.art === 'kopf' || g.art === 'direkt' || g.art === 'bucht' ? '' : knopf('kopieren', '⧉', 'Kopieren')) + knopf('loeschen', '🗑', 'Löschen', 'class="rot"');
   }
   $('leiste-status').textContent = status.text;
   $('leiste-status').className = status.ok ? 'gut' : 'schlecht';
@@ -906,6 +967,7 @@ $('pad').addEventListener('click', (ev) => {
   const o = gewaehltesObjekt(), g = gewaehlterGurt();
   if (o) verschiebe(zustand.objekte, ergebnis.lage, o, laengs * SCHRITT, quer * SCHRITT, fahrzeug());
   if (g?.art === 'kopf') g.abstand = kopfAbstand(g.abstand + laengs * SCHRITT * (g.seite === 'vorne' ? -1 : 1));
+  else if (g?.art === 'bucht') g.x = Math.round(Math.min(Math.max(g.x + laengs * SCHRITT, -fahrzeug().laenge / 2), fahrzeug().laenge / 2) * 1000) / 1000;
   else if (g?.art === 'direkt' && g.ankerX != null) g.ankerX = naechsterZurrpunkt(fahrzeug().laenge, g.ankerX + laengs * 0.5);
   else if (g?.art === 'direkt') setzeDirekt(g, 'abstand', direktAbstand(g.abstand + laengs * SCHRITT * (g.ecke[0] === 'v' ? 1 : -1)));
   else if (g) { const L = fahrzeug().laenge / 2; g.x = Math.round(Math.min(Math.max(g.x + laengs * SCHRITT, -L), L) * 1000) / 1000; }
@@ -920,7 +982,7 @@ $('leiste-knoepfe').addEventListener('click', (ev) => {
 function fuehreAus(aktion) {
   const o = gewaehltesObjekt(), g = gewaehlterGurt();
   const L = fahrzeug().laenge;
-  if (aktion === 'bearbeiten') { if (o) oeffneObjektBlatt(); else if (g.art === 'kopf') oeffneKopfBlatt(); else if (g.art === 'direkt') oeffneDirektBlatt(); else oeffneGurtBlatt(); return; }
+  if (aktion === 'bearbeiten') { if (o) oeffneObjektBlatt(); else if (g.art === 'kopf') oeffneKopfBlatt(); else if (g.art === 'direkt') oeffneDirektBlatt(); else if (g.art === 'bucht') oeffneBuchtBlatt(); else oeffneGurtBlatt(); return; }
   if (o) {
     const { wurzel, gruppe } = bewegGruppe(zustand.objekte, ergebnis.lage, o);
     if (aktion === 'anwand') anWand(zustand.objekte, ergebnis.lage, o, fahrzeug());
@@ -1010,7 +1072,10 @@ function oeffneObjektBlatt() {
   }
   let masse = '';
   if (o.typ !== 'rhm') masse = feld('Masse', stepper('masse', o.masse, { schritt: o.masse >= 500 ? 50 : 10, min: 1, max: 40000, einheit: 'kg', nk: 0 }));
-  const masze = o.hochkant ? '' : zyl
+  const masze = o.form === 'rohr'
+    ? feld('Maße in m (Länge · Durchmesser)', `<div class="drei" style="grid-template-columns:1fr 1fr">${stepper('l', o.l, { ...m, schritt: 0.5, max: 18 })}${stepper('rohrd', o.b, m)}</div>`)
+      + feld('Lagerung', `<div class="chips"><button type="button" data-keile class="${o.keile ? 'an' : ''}">auf Kanthölzern mit Keilen</button></div><p class="werte">${o.keile ? 'Keile verhindern das Rollen.' : 'Ohne Keile rollt das Rohr quer zu seiner Achse: dann hält nur Formschluss oder eine Zurrung, z. B. Buchtlashing.'}</p>`)
+    : o.hochkant ? '' : zyl
     ? feld('Maße in m (Durchmesser · Höhe)', `<div class="drei" style="grid-template-columns:1fr 1fr">${stepper('durchmesser', o.l, m)}${stepper('h', o.h, m)}</div>`)
     : o.typ === 'rhm'
       ? feld('Maße in m (Länge · Breite)', `<div class="drei" style="grid-template-columns:1fr 1fr">${stepper('l', o.l, m)}${stepper('b', o.b, m)}</div>`)
@@ -1097,6 +1162,33 @@ function oeffneDirektBlatt() {
     <div class="fuss"><button type="button" class="gefahr" data-blatt="loeschen">Diesen löschen</button>${anzahl > 1 ? '<button type="button" class="gefahr" data-blatt="alle-loeschen">Alle löschen</button>' : ''}<button type="button" data-blatt="fertig">Fertig</button></div>`);
 }
 
+function oeffneBuchtBlatt() {
+  const g = gewaehlterGurt();
+  if (!g) return;
+  const L = fahrzeug().laenge;
+  const anzahl = zustand.gurte.filter((x) => x.gruppe && x.gruppe === g.gruppe).length;
+  oeffneBlatt(`<h3 id="blatt-titel">Buchtlashing</h3><div class="lage" id="blatt-lage"></div>
+    ${feld('Verankert am', `<div class="chips"><button type="button" data-buchtseite="l" class="${g.seite === 'l' ? 'an' : ''}">linken Rahmen (hält nach links)</button><button type="button" data-buchtseite="r" class="${g.seite === 'r' ? 'an' : ''}">rechten Rahmen (hält nach rechts)</button></div>`)}
+    <div class="drei" style="grid-template-columns:1fr 1fr">
+      ${feld('Zurrkraft LC', stepper('dlc', g.lc, { schritt: 500, min: 500, max: 10000, einheit: 'daN', nk: 0 }))}
+      ${feld('Abstand Stirnwand', stepper('abstand', L / 2 - g.x, { schritt: 0.05, min: 0, max: L, einheit: 'm', nk: 2 }))}
+    </div>
+    ${anzahl > 1 ? `<div class="chips"><button type="button" data-alle class="${alleVierAn ? 'an' : ''}">LC für alle ${anzahl} Schlingen übernehmen</button></div>` : ''}
+    <p class="werte">Die Schlinge läuft vom Zurrpunkt über die Ladung, um die ferne Seite herum und unten zurück zum selben Zurrpunkt. Sie zieht die Ladung zu ihrer Seite, deshalb immer paarweise (links und rechts). Je Schenkel LC · (cos α · cos β + 0,75 · μ · sin α). Bei rollender Ladung zählt keine Reibung.</p>
+    <div class="fuss"><button type="button" class="gefahr" data-blatt="loeschen">Diese löschen</button>${anzahl > 1 ? '<button type="button" class="gefahr" data-blatt="alle-loeschen">Alle löschen</button>' : ''}<button type="button" data-blatt="fertig">Fertig</button></div>`);
+}
+
+function neueBucht(ladung) {
+  const e = einheitVon(ladung);
+  if (!e) return;
+  const f = e.einheit.f, lang = f.x1 - f.x0, gruppe = neueId('z');
+  const stellen = lang >= 3 ? [f.x1 - lang * 0.25, f.x0 + lang * 0.25] : [(f.x0 + f.x1) / 2];
+  const neu = stellen.flatMap((x) => [['l', x + 0.1], ['r', x - 0.1]].map(([seite, xs]) => ({ id: neueId('g'), art: 'bucht', gruppe, ziel: ladung.id, seite, x: Math.round(xs * 100) / 100, lc: 2500, stf: 500 })));
+  zustand.gurte.push(...neu);
+  auswahl = { art: 'gurt', id: neu[0].id };
+  aendere();
+}
+
 function neuerEinzelgurt(ladung) {
   const e = einheitVon(ladung);
   if (!e) return;
@@ -1158,6 +1250,7 @@ function oeffneGurtWahl() {
       ${seite ? '' : k('diagonal', 'Diagonalzurren (4 Gurte)', 'von den Ecken schräg nach außen, hält längs und quer')}
       ${seite ? '' : k('schraeg', 'Schrägzurren (4 Gurte)', 'von den Ecken quer zur Seite, hält seitlich')}
       ${seite ? '' : k('frei', 'Einzelgurt frei spannen', 'von einer Ecke zu einem beliebigen Zurrpunkt am Rahmen')}
+      ${seite ? '' : k('bucht', 'Buchtlashing (Schlingen je Seite)', 'Schlinge um die Ladung, paarweise links und rechts; hält seitlich, auch gegen Rollen')}
     </div>
     ${e && !seite ? `<div class="chips"><button type="button" data-verteiler class="${verteilerAn ? 'an' : ''}">Palette hochkant als Lastverteiler dazustellen</button></div>` : ''}
     ${seite ? '<p class="werte">Die Schlinge läuft um diese Palette und die Ladung dahinter.</p>' : ''}
@@ -1201,7 +1294,8 @@ function blattLage() {
 function setzeWert(name, v) {
   const o = gewaehltesObjekt(), g = gewaehlterGurt();
   if (o) {
-    if (name === 'durchmesser') { o.l = o.b = v; } else if (name === 'material') o.material = v; else o[name] = v;
+    if (name === 'rohrd') { o.b = v; o.h = v + (o.keile ? 0.1 : 0); }
+    else if (name === 'durchmesser') { o.l = o.b = v; } else if (name === 'material') o.material = v; else o[name] = v;
     if (name === 'mu') { const c = blattInhalt.querySelector('[data-mu-auto]'); c?.classList.remove('an'); }
   } else if (g) {
     if (name === 'abstand') g.x = Math.round((fahrzeug().laenge / 2 - v) * 1000) / 1000;
@@ -1262,6 +1356,15 @@ blattInhalt.addEventListener('click', (ev) => {
     [o.l, o.b, o.h, o.hochkant] = maße;
     aendere();
     oeffneObjektBlatt();
+  } else if (el.hasAttribute('data-keile') && o) {
+    o.keile = !o.keile;
+    o.h = o.b + (o.keile ? 0.1 : 0);
+    aendere();
+    oeffneObjektBlatt();
+  } else if (el.dataset.buchtseite && g) {
+    g.seite = el.dataset.buchtseite;
+    aendere();
+    oeffneBuchtBlatt();
   } else if (el.dataset.ecke && g) {
     g.ecke = el.dataset.ecke;
     aendere();
@@ -1286,7 +1389,8 @@ blattInhalt.addEventListener('click', (ev) => {
       neuerGurt(e ? freierGurtX(zustand.gurte, e.einheit.f) : ansicht === 'oben' ? steuerOben.target.x : 0);
     } else {
       const { ladung } = gurtZiel(sel);
-      if (ladung && art === 'frei') neuerEinzelgurt(ladung);
+      if (ladung && art === 'bucht') neueBucht(ladung);
+      else if (ladung && art === 'frei') neuerEinzelgurt(ladung);
       else if (ladung && (art === 'diagonal' || art === 'schraeg')) neueDirektzurrung(ladung, art);
       else if (ladung) neueKopfschlinge(ladung, art === 'kopf-hinten' ? 'hinten' : 'vorne');
     }

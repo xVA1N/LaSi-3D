@@ -92,7 +92,10 @@ export function ladeeinheiten(objekte) {
     const hoehe = Math.max(...mitglieder.map((o) => lage.get(o.id).y + o.h));
     const schwerpunkt = mitglieder.reduce((s, o) => s + o.masse * (lage.get(o.id).y + o.h / 2), 0) / masse;
     const basis = fussabdruck(w);
-    einheiten.push({ id: w.id, mitglieder, masse, mu, f, basis, hoehe, schwerpunkt, rhm: lage.get(w.id).traeger?.typ === 'rhm' });
+    // liegende Rohre ohne Keile rollen quer zu ihrer Achse
+    const rund = mitglieder.filter((o) => o.form === 'rohr');
+    const rollt = rund.length && !rund.every((o) => o.keile) ? (rund[0].drehung === 90 ? ['vorwaerts', 'rueckwaerts'] : ['seitlich']) : [];
+    einheiten.push({ id: w.id, mitglieder, masse, mu, f, basis, hoehe, schwerpunkt, rhm: lage.get(w.id).traeger?.typ === 'rhm', rollt, rund: rund.length > 0 });
   }
   return { einheiten, lage };
 }
@@ -175,6 +178,22 @@ export function direktLage(g, einheit, flaeche) {
   const d = { x: v.x / n, y: v.y / n, z: v.z / n };
   const grad = (r) => (r * 180) / Math.PI;
   return { p, a, d, laenge: n, winkel: grad(Math.asin(Math.min(1, -d.y))), beta: grad(Math.atan2(Math.abs(d.z), Math.abs(d.x))) };
+}
+
+/**
+ * Buchtlashing: Schlinge vom Zurrpunkt am Rahmen (Seite `seite`, Stelle x) über die Ladung, um die
+ * ferne Seite herum und unter der Ladung zurück zum selben Zurrpunkt. Sie zieht die Ladung mit
+ * zwei Schenkeln zu dieser Seite: oben von der nahen Oberkante, unten von unter der Mitte.
+ */
+export function buchtLage(g, einheit, flaeche) {
+  const B = flaeche.breite / 2 + ZURRPUNKT_AUSSEN, links = g.seite === 'l';
+  const f = einheit.f, zc = (f.z0 + f.z1) / 2;
+  const a = { x: g.x, y: 0, z: links ? -B : B };
+  const oben = { x: g.x, y: einheit.hoehe * 0.85, z: links ? f.z0 : f.z1 };
+  const unten = { x: g.x, y: 0.02, z: zc };
+  const richtung = (p) => { const v = { x: a.x - p.x, y: a.y - p.y, z: a.z - p.z }; const n = Math.hypot(v.x, v.y, v.z) || 1; return { x: v.x / n, y: v.y / n, z: v.z / n }; };
+  const dOben = richtung(oben), dUnten = richtung(unten);
+  return { a, oben, unten, dOben, dUnten, z0: f.z0, z1: f.z1, hoehe: einheit.hoehe, winkel: (Math.asin(Math.min(1, -dOben.y)) * 180) / Math.PI };
 }
 
 /** Haltekraft eines Direktzurrgurts je Rutschrichtung: LC · (cos α · cos β + μ_D · sin α), nur wenn er dabei gespannt wird */
@@ -264,6 +283,24 @@ export function pruefe({ objekte, gurte, flaeche }) {
       b.gurte.push(g.id);
       return info;
     }
+    if (g.art === 'bucht') {
+      const e = einheiten.find((x) => x.mitglieder.some((m) => m.id === g.ziel));
+      if (!e) return mangel(g, { id: g.id, art: 'bucht', getroffen: [], winkel: 0 }, 'Buchtlashing ohne Ladung.');
+      const k = buchtLage(g, e, flaeche);
+      const info = { id: g.id, art: 'bucht', getroffen: [e.id], ...k };
+      const hindernis = durch([k.oben, k.a], mitgliedIds(e)) || durch([k.unten, k.a], mitgliedIds(e));
+      if (hindernis) return mangel(g, info, `Schlinge läuft durch ${hindernis.name}.`);
+      if (g.x <= e.f.x0 || g.x >= e.f.x1) return mangel(g, info, 'Schlinge liegt neben der Ladung.');
+      const b = beitrag.get(e.id);
+      for (const d of [k.dOben, k.dUnten]) {
+        const w = direktWirkung(d, g.lc * 10, e.mu);
+        const mo = direktKippmomente(d === k.dOben ? k.oben : k.unten, d, g.lc * 10, e.basis);
+        for (const r of Object.keys(w)) { b.direkt[r] += w[r]; b.moment[r] += mo[r]; }
+      }
+      b.quellen.seitlich.add('bucht');
+      b.gurte.push(g.id);
+      return info;
+    }
     if (g.art === 'direkt') {
       const e = einheiten.find((x) => x.mitglieder.some((m) => m.id === g.ziel));
       if (!e) return mangel(g, { id: g.id, art: 'direkt', getroffen: [], winkel: 0 }, 'Direktzurrung ohne Ladung.');
@@ -321,19 +358,22 @@ export function pruefe({ objekte, gurte, flaeche }) {
     const richtungen = {};
     for (const r of RICHTUNGEN) {
       const { c, cz } = BEIWERTE_STRASSE[r];
-      const brauch = Math.max(0, (c - e.mu * cz) * e.masse * G * SICHERHEIT_NIEDERZURREN[r]);
+      // Rollen: keine Reibung, Niederzurren hält nicht
+      const rollt = e.rollt.includes(r);
+      const mu = rollt ? 0 : e.mu, reib = rollt ? 0 : b.reib;
+      const brauch = Math.max(0, (c - mu * cz) * e.masse * G * SICHERHEIT_NIEDERZURREN[r]);
       const formschluss = r === 'vorwaerts' && vorne.has(e.id);
-      if (formschluss) stirnwandLast += Math.max(0, (c - e.mu * cz) * e.masse * G);
-      const d = { brauch, hat: b.reib, formschluss, methode: 'nieder', ok: formschluss || brauch <= b.reib + 1e-6, auslastung: brauch === 0 ? 0 : b.reib > 0 ? brauch / b.reib : Infinity };
+      if (formschluss) stirnwandLast += Math.max(0, (c - mu * cz) * e.masse * G);
+      const d = { brauch, hat: reib, formschluss, rollt, methode: 'nieder', ok: formschluss || brauch <= reib + 1e-6, auslastung: brauch === 0 ? 0 : reib > 0 ? brauch / reib : Infinity };
       // Direktzurren (Kopfschlinge, Diagonal-, Schrägzurren): μ mit f_μ abgemindert, gerechnet mit LC.
       // Direktzurrungen werden addiert, mit Niederzurren nicht; es zählt das günstigere Verfahren.
       // Seitlich zählt die schwächere der beiden Seiten.
       const direkt = r === 'seitlich' ? Math.min(b.direkt.rechts, b.direkt.links) : b.direkt[r];
       if (direkt > 0 && !formschluss && brauch > 0) {
-        const brauchDirekt = Math.max(0, (c - e.mu * F_MU_DIREKT * cz) * e.masse * G);
+        const brauchDirekt = Math.max(0, (c - mu * F_MU_DIREKT * cz) * e.masse * G);
         const k = brauchDirekt / direkt;
         const quellen = b.quellen[r];
-        const methode = quellen.size === 1 && quellen.has('kopf') ? 'kopf' : 'direkt';
+        const methode = quellen.size === 1 && quellen.has('kopf') ? 'kopf' : quellen.size === 1 && quellen.has('bucht') ? 'bucht' : 'direkt';
         if (k < d.auslastung) Object.assign(d, { methode, brauch: brauchDirekt, hat: direkt, auslastung: k, ok: d.ok || k <= 1 });
       }
       richtungen[r] = d;
@@ -353,6 +393,8 @@ export function pruefe({ objekte, gurte, flaeche }) {
           && (b.kopf.rueckwaerts > 0 || rueckKipp <= b.moment.rueckwaerts + 1e-6),
       },
     };
+    // liegende Rohre kippen nicht, sie rollen (oben bei den Richtungen gerechnet)
+    if (e.rund) { kippen.seitlich.ok = true; kippen.seitlich.brauch = 0; kippen.laengs.ok = true; }
     const ok = RICHTUNGEN.every((r) => richtungen[r].ok) && kippen.seitlich.ok && kippen.laengs.ok;
     return { id: e.id, einheit: e, richtungen, kippen, gurte: b.gurte, ok };
   });

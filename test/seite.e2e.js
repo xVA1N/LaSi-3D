@@ -251,6 +251,30 @@ await seite.evaluate((id) => document.querySelector('[data-waehle="' + id + '"]'
 await seite.click('[data-aktion="loeschen"]'); await kurz();
 pruefe(!(await lage()).gurte.some((g) => g.art === 'direkt'), 'Mit der Ladung gehen auch ihre Direktzurrungen');
 
+// Rohr: rollt ohne Keile, Buchtlashing paarweise
+await seite.selectOption('#fahrzeug', 'sattel'); await seite.click('#beispiel'); await kurz();
+await seite.mouse.click(5, 300); await kurz();
+await seite.click('#ladegut-neu'); await seite.click('[data-ladegut="rohr"]'); await kurz();
+const rohrId = await seite.evaluate(() => window.lasi.auswahl().id);
+await seite.evaluate((id) => window.lasi.setze(id, { x: -1.5, z: 0 }), rohrId); await kurz();
+await seite.evaluate(() => { const z = window.lasi.zustand(); const rolle = z.objekte.find((o) => o.art === 'papierrolle'); window.lasi.setze(rolle.id, { x: 6.5, z: 0 }); }); await kurz();
+await seite.evaluate((id) => document.querySelector('[data-waehle="' + id + '"]')?.click(), rohrId); await kurz();
+pruefe((await seite.textContent(`[data-waehle="${rohrId}"]`)).includes('rollt'), 'Rohr ohne Keile rollt seitlich');
+await seite.click('[data-aktion="gurt"]'); await seite.click('[data-neu="bucht"]'); await kurz();
+const schlingen = (await lage()).gurte.filter((g) => g.art === 'bucht' && g.ziel === rohrId);
+pruefe(schlingen.length === 4 && schlingen.filter((g) => g.seite === 'l').length === 2, 'Buchtlashing: zwei Paare (links/rechts) für ein 6-m-Rohr');
+pruefe(/seitlich\s*Buchtlashing/.test(await seite.textContent(`[data-waehle="${rohrId}"]`)), 'Buchtlashing hält das Rohr seitlich');
+await seite.evaluate((id) => document.querySelector('[data-waehle="' + id + '"]')?.click(), rohrId); await kurz();
+await seite.click('[data-aktion="bearbeiten"]'); await seite.click('[data-keile]'); await kurz();
+const rohrNeu = (await lage()).objekte.find((o) => o.id === rohrId);
+pruefe(rohrNeu.keile && Math.abs(rohrNeu.h - 0.6) < 1e-9, 'Kanthölzer mit Keilen lassen sich einschalten');
+await seite.click('[data-blatt="fertig"]');
+if (bilder) {
+  await seite.click('[data-ansicht="3d"]'); await seite.waitForTimeout(300);
+  await seite.evaluate(() => window.lasi.nah(-1.5, 0, 3.2)); await seite.mouse.click(5, 300); await seite.waitForTimeout(300);
+  await seite.screenshot({ path: `${bilder}/rohr.png` });
+}
+
 // Einzelgurt frei spannen
 await seite.selectOption('#fahrzeug', 'sattel'); await seite.click('#beispiel'); await kurz();
 await seite.click('#ladegut-neu'); await seite.click('[data-ladegut="gitterbox"]'); await kurz();
