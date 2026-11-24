@@ -515,7 +515,9 @@ function zeigeLeiste() {
     $('leiste-titel').textContent = o.typ === 'rhm' ? o.name : `${o.name} · ${zahl(o.masse, 0)} kg`;
     $('pad').classList.remove('nur-laengs');
     $('leiste-knoepfe').innerHTML = knopf('anwand', '⇧', 'An Wand') + knopf('drehen', '⟳', 'Drehen', o.form === 'zylinder' ? 'disabled' : '')
-      + knopf('gurt', '⇵', 'Gurt +', o.typ === 'rhm' ? 'disabled' : '') + knopf('bearbeiten', '✎', 'Bearbeiten') + knopf('kopieren', '⧉', 'Kopieren') + knopf('loeschen', '🗑', 'Löschen', 'class="rot"');
+      + (o.art === 'europalette'
+        ? knopf('hochkant', o.hochkant ? '⤓' : '⤒', o.hochkant ? 'Hinlegen' : 'Hochkant', traegtLast(o) ? 'disabled title="Erst die Ladung herunternehmen"' : '')
+        : knopf('gurt', '⇵', 'Gurt +', o.typ === 'rhm' ? 'disabled' : '')) + knopf('bearbeiten', '✎', 'Bearbeiten') + knopf('kopieren', '⧉', 'Kopieren') + knopf('loeschen', '🗑', 'Löschen', 'class="rot"');
   } else {
     status = gurtStatus(g);
     $('leiste-titel').textContent = g.art === 'kopf' ? `Kopfschlinge ${SEITE[g.seite]} · LC ${zahl(g.lc, 0)} daN` : `Zurrgurt · ${zahl(g.stf, 0)} daN`;
@@ -527,6 +529,7 @@ function zeigeLeiste() {
 }
 
 const SCHRITT = 0.05;
+const traegtLast = (o) => zustand.objekte.some((a) => ergebnis.lage.get(a.id)?.traeger?.id === o.id);
 const kopfAbstand = (v) => Math.round(Math.min(Math.max(v, 0.2), 8) * 100) / 100;
 $('pad').addEventListener('click', (ev) => {
   const schub = ev.target.closest('[data-schub]')?.dataset.schub;
@@ -562,6 +565,7 @@ function fuehreAus(aktion) {
       verschiebe(zustand.objekte, ergebnis.lage, o, 0, 0, fahrzeug());
     }
     if (aktion === 'gurt') { oeffneGurtWahl(); return; }
+    if (aktion === 'hochkant' && !traegtLast(o)) [o.l, o.b, o.h, o.hochkant] = o.hochkant ? [1.2, 0.8, 0.144, false] : [0.144, 1.2, 0.8, true];
     if (aktion === 'kopieren') {
       const neu = new Map(gruppe.map((a) => [a.id, { ...a, id: neueId('o') }]));
       const kopien = [...neu.values()];

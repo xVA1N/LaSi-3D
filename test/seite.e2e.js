@@ -114,7 +114,12 @@ const pal = (await lage()).objekte.at(-1); // die eben hinzugefügte Palette
 pruefe(pal.hochkant && pal.b === 0.8 && pal.h === 1.2, 'Palette lässt sich hochkant stellen');
 await seite.click('[data-lage="liegend"]'); await kurz();
 pruefe(!(await lage()).objekte.at(-1).hochkant, 'und wieder hinlegen');
-await seite.click('[data-blatt="loeschen"]'); await kurz();
+await seite.click('[data-blatt="fertig"]');
+await seite.click('[data-aktion="hochkant"]'); await kurz();
+pruefe((await lage()).objekte.at(-1).hochkant, 'Knopf „Hochkant“ in der Leiste stellt die Palette auf');
+await seite.click('[data-aktion="hochkant"]'); await kurz();
+pruefe(!(await lage()).objekte.at(-1).hochkant, 'Knopf „Hinlegen“ legt sie wieder hin');
+await seite.click('[data-aktion="loeschen"]'); await kurz();
 if (bilder) {
   await seite.evaluate((id) => document.querySelector('[data-waehle="' + id + '"]')?.click(), ibc); await kurz();
   await seite.screenshot({ path: `${bilder}/kopf-oben.png` });
