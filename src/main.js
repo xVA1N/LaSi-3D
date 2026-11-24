@@ -502,8 +502,22 @@ function groesse() {
   kameraOben.updateProjectionMatrix();
 }
 new ResizeObserver(groesse).observe(behaelter);
+// Draufsicht: nur vor und zurück verschieben (quer fest), Zoom zwischen ganzer Fläche und Nahansicht
+function begrenzeOben() {
+  const { laenge: L, hoehe: H } = fahrzeug();
+  // ganz heraus: ganze Fläche samt Überstand in der Höhe sichtbar
+  steuerOben.minZoom = HOEHE_OBEN / (L + 2 + (uebermass?.ueberHinten ?? 0));
+  if (kameraOben.zoom < steuerOben.minZoom) { kameraOben.zoom = steuerOben.minZoom; kameraOben.updateProjectionMatrix(); }
+  const halb = HOEHE_OBEN / kameraOben.zoom / 2;
+  const vorn = L / 2 + 1.2 - halb, hinten = -L / 2 - 0.8 - (uebermass?.ueberHinten ?? 0) + halb;
+  const x = vorn < hinten ? (vorn + hinten) / 2 : Math.min(Math.max(steuerOben.target.x, hinten), vorn);
+  steuerOben.target.set(x, H, 0.1);
+  kameraOben.position.set(x, H + 50, 0.1);
+}
+
 renderer.setAnimationLoop(() => {
   steuerung().update();
+  if (ansicht === 'oben') begrenzeOben();
   renderer.render(szene, kamera());
   setzeMarken();
   if (ansicht === 'oben') setzeMiniSicht();
@@ -1232,6 +1246,7 @@ setzeAnsicht(ansicht, true);
 window.lasi = {
   zustand: () => zustand, ergebnis: () => ergebnis, auswahl: () => auswahl, ansicht: () => ansicht,
   uebermass: () => uebermass,
+  obenSicht: () => ({ x: steuerOben.target.x, z: steuerOben.target.z, zoom: kameraOben.zoom, minZoom: steuerOben.minZoom }),
   // Werte eines Objekts direkt setzen (für die Tests)
   setze(id, werte) { Object.assign(objekt(id), werte); aendere(); },
   // Kamera nah an einen Punkt der Ladefläche (für Bilder in den Tests)
