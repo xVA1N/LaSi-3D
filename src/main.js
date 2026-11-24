@@ -238,9 +238,13 @@ function baueObjekt(o, y, status, gewaehlt, deckNachMinus = false) {
   ladungGruppe.add(g);
 }
 
+// mangelhafte Gurte blinken rot (Deckkraft wird in der Zeichenschleife geändert)
+// ohne Tiefentest: auch sichtbar, wenn der Gurt durch Ladung läuft
+const mangelMat = new THREE.MeshStandardMaterial({ color: 0xff2d2d, emissive: 0xb00000, transparent: true, opacity: 1, depthTest: false });
 const unsichtbar = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false });
 function band(a, b, material, breite = 0.05, dicke = 0.012) {
   const m = new THREE.Mesh(new THREE.BoxGeometry(breite, a.distanceTo(b), dicke), material);
+  if (material === mangelMat) m.renderOrder = 10;
   m.position.copy(a).add(b).multiplyScalar(0.5);
   m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), b.clone().sub(a).normalize());
   return m;
@@ -253,7 +257,7 @@ function baueGurt(g, info, gewaehlt) {
     ? [[-B / 2, 0], [info.z0 - e, info.hoehe + e], [info.z1 + e, info.hoehe + e], [B / 2, 0]]
     : [[-B / 2, 0.02], [B / 2, 0.02]];
   const v = punkte.map(([z, y]) => new THREE.Vector3(g.x, H + y, z));
-  const material = gewaehlt ? mat(0xffc400, { emissive: 0x664400 }) : liegt ? mat(0xe8901a, { roughness: 0.5 }) : mat(0xd2382c);
+  const material = gewaehlt ? mat(0xffc400, { emissive: 0x664400 }) : info.mangel ? mangelMat : mat(0xe8901a, { roughness: 0.5 });
   for (let i = 0; i < v.length - 1; i++) {
     const sichtbar = band(v[i], v[i + 1], material, ansicht === 'oben' ? 0.07 : 0.05);
     sichtbar.castShadow = true;
@@ -274,7 +278,7 @@ function baueKopf(g, info, gewaehlt) {
   const e = 0.03, richtung = info.richtung === 'rueckwaerts' ? -1 : 1, aussen = richtung * e;
   const v = [[info.ankerX, 0, -B / 2], [info.x + aussen, info.y, info.z0 - e], [info.x + aussen, info.y, info.z1 + e], [info.ankerX, 0, B / 2]]
     .map(([x, y, z]) => new THREE.Vector3(x, H + y, z));
-  const material = gewaehlt ? mat(0xffc400, { emissive: 0x664400 }) : mat(0xe8901a, { roughness: 0.5 });
+  const material = gewaehlt ? mat(0xffc400, { emissive: 0x664400 }) : info.mangel ? mangelMat : mat(0xe8901a, { roughness: 0.5 });
   for (let i = 0; i < v.length - 1; i++) {
     const sichtbar = band(v[i], v[i + 1], material, 0.012, ansicht === 'oben' ? 0.07 : 0.05);
     sichtbar.castShadow = true;
@@ -310,7 +314,7 @@ function baueDirekt(g, info, gewaehlt) {
   if (!info?.getroffen.length) return;
   const { hoehe: H } = fahrzeug();
   const p = new THREE.Vector3(info.p.x, H + info.p.y, info.p.z), a = new THREE.Vector3(info.a.x, H, info.a.z);
-  const material = gewaehlt ? mat(0xffc400, { emissive: 0x664400 }) : mat(0xe8901a, { roughness: 0.5 });
+  const material = gewaehlt ? mat(0xffc400, { emissive: 0x664400 }) : info.mangel ? mangelMat : mat(0xe8901a, { roughness: 0.5 });
   const sichtbar = band(p, a, material, 0.05, 0.012);
   sichtbar.castShadow = true;
   ladungGruppe.add(sichtbar);
@@ -329,9 +333,10 @@ function zeichne() {
   const status = new Map();
   for (const e of ergebnis.ergebnisse) for (const m of e.einheit.mitglieder) status.set(m.id, e.ok);
   for (const m of uebermass.meldungen) if (m.id) status.set(m.id, false);
+  for (const h of ergebnis.hinweise) if (h.art === 'lose') status.set(h.id, false);
   for (const o of zustand.objekte) {
     const gew = auswahl?.art === 'objekt' && auswahl.id === o.id;
-    baueObjekt(o, ergebnis.lage.get(o.id).y, o.typ === 'ladung' ? status.get(o.id) : undefined, gew, o.hochkant && deckNachMinus(o));
+    baueObjekt(o, ergebnis.lage.get(o.id).y, o.typ !== 'rhm' ? status.get(o.id) : undefined, gew, o.hochkant && deckNachMinus(o));
   }
   for (const g of zustand.gurte) {
     const info = ergebnis.gurte.find((i) => i.id === g.id), gew = auswahl?.art === 'gurt' && auswahl.id === g.id;
@@ -538,6 +543,7 @@ function begrenzeOben() {
 renderer.setAnimationLoop(() => {
   steuerung().update();
   if (ansicht === 'oben') begrenzeOben();
+  mangelMat.opacity = 0.25 + 0.75 * (Math.sin(performance.now() / 160) > 0 ? 1 : 0);
   renderer.render(szene, kamera());
   setzeMarken();
   if (ansicht === 'oben') setzeMiniSicht();
@@ -573,6 +579,10 @@ function einheitName(e) {
   const zaehl = new Map();
   for (const o of ladung) zaehl.set(o.name, (zaehl.get(o.name) ?? 0) + 1);
   let name = [...zaehl].map(([n, k]) => (k > 1 ? `${k} × ${n}` : n)).join(' + ');
+  if (!ladung.length) {
+    const p = e.einheit.mitglieder.filter((o) => o.typ === 'palette').length;
+    return `${p > 1 ? `${p} × ` : ''}Europalette, leer${e.einheit.rhm ? ', RHM darunter' : ''}`;
+  }
   if (e.einheit.mitglieder.some((o) => o.typ === 'palette')) name += ' auf Palette';
   if (e.einheit.rhm) name += ', RHM darunter';
   return name;
@@ -581,7 +591,10 @@ function einheitName(e) {
 /** Kurzer Status der Einheit, zu der ein Objekt gehört: { ok, text } */
 function objektStatus(o) {
   const e = ergebnis.ergebnisse.find((x) => x.einheit.mitglieder.some((m) => m.id === o.id));
-  if (!e) return { ok: true, text: 'trägt keine Ladung' };
+  if (!e) {
+    if (ergebnis.hinweise.some((h) => h.art === 'lose' && h.id === o.id)) return { ok: false, text: '✗ steht ungesichert' };
+    return { ok: true, text: o.hochkant ? '✓ gehalten (Füllmittel oder Lastverteiler)' : 'trägt keine Ladung' };
+  }
   const probleme = [];
   for (const [r, d] of Object.entries(e.richtungen)) if (!d.ok) probleme.push(d.hat === 0 ? `${RNAME[r]} ungesichert` : `${RNAME[r]} ${zahl(d.auslastung * 100, 0)} %`);
   if (!e.kippen.seitlich.ok) probleme.push('kippt quer');
@@ -599,6 +612,7 @@ const einheitVon = (o) => ergebnis.ergebnisse.find((x) => x.einheit.mitglieder.s
 const SEITE = { hinten: 'hinten', vorne: 'vorne' };
 function gurtStatus(g) {
   const info = ergebnis.gurte.find((i) => i.id === g.id);
+  if (info?.mangel) return { ok: false, text: `✗ Zurrmittel mangelhaft: ${info.mangel}` };
   if (g.art === 'direkt') {
     if (!info?.getroffen.length) return { ok: false, text: '✗ ohne Ladung' };
     if (Math.hypot(info.d.x, info.d.z) < 0.25) return { ok: false, text: '✗ Gurt fast senkrecht, hält kaum: Ladung vom Rand abrücken oder Zurrpunkt weiter weg' };
@@ -621,7 +635,7 @@ function zeigeErgebnis() {
   const alles = r.ok && um.ok;
   $('status').textContent = leer ? 'Keine Ladung'
     : alles ? `✓ Ladung gesichert${um.meldungen.some((m) => m.stufe === 'pflicht') ? ' · Kennzeichnung nötig' : ''}`
-    : `✗ ${[offen ? `${offen} nicht gesichert` : '', umFehler.length ? 'Übermaß' : '', !offen && !umFehler.length ? 'Hinweise prüfen' : ''].filter(Boolean).join(' · ')}`;
+    : `✗ ${[r.hinweise.some((h) => h.art === 'gurt-mangel') ? 'Zurrmittel mangelhaft' : '', offen ? `${offen} nicht gesichert` : '', r.hinweise.some((h) => h.art === 'lose') ? 'lose Teile' : '', umFehler.length ? 'Übermaß' : '', ''].filter(Boolean).join(' · ') || 'Hinweise prüfen'}`;
   $('status').className = `status ${leer ? '' : alles ? 'gut' : 'schlecht'}`;
   const zeile = (name, wert, grenze, ok) => `<tr><td>${name}</td><td class="${ok ? 'gut' : 'schlecht'}">${wert}</td><td>${grenze}</td></tr>`;
   const m2 = (v) => `${zahl(v, 2)} m`;
@@ -644,7 +658,7 @@ function zeigeErgebnis() {
       return `<tr><td>${RNAME[k]}</td><td class="${d.ok ? 'gut' : 'schlecht'}">${text}</td></tr>`;
     }).join('');
     const kq = e.kippen.seitlich, kl = e.kippen.laengs;
-    const ersteLadung = e.einheit.mitglieder.find((o) => o.typ === 'ladung');
+    const ersteLadung = e.einheit.mitglieder.find((o) => o.typ === 'ladung') ?? e.einheit.mitglieder[0];
     return `<div class="einheit ${e.ok ? '' : 'nein'}" data-waehle="${ersteLadung.id}">
       <b>${reihen.find((r) => r.ids.includes(e.id)) ? `<span class="reihe-nr">LR${reihen.find((r) => r.ids.includes(e.id)).nr}</span> ` : ''}${esc(einheitName(e))}</b>
       <span class="werte">${zahl(e.einheit.masse, 0)} kg · μ = ${zahl(e.einheit.mu)} · ${e.gurte.length} Gurt${e.gurte.length === 1 ? '' : 'e'}</span>
@@ -900,14 +914,14 @@ function gurtZiel(o) {
     for (const e of ergebnis.ergebnisse) {
       const u = e.einheit.f;
       if (!(u.z0 < f.z1 && f.z0 < u.z1)) continue;
-      const ladung = e.einheit.mitglieder.find((m) => m.typ === 'ladung');
+      const ladung = e.einheit.mitglieder.find((m) => m.typ === 'ladung') ?? e.einheit.mitglieder[0];
       if (Math.abs(u.x0 - f.x1) <= 0.05) return { ladung, seite: 'hinten' };
       if (Math.abs(u.x1 - f.x0) <= 0.05) return { ladung, seite: 'vorne' };
     }
     return {};
   }
   const e = einheitVon(o);
-  return { ladung: e?.einheit.mitglieder.find((m) => m.typ === 'ladung') };
+  return { ladung: e ? e.einheit.mitglieder.find((m) => m.typ === 'ladung') ?? e.einheit.mitglieder[0] : undefined };
 }
 
 function oeffneGurtWahl() {

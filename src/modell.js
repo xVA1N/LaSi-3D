@@ -83,7 +83,8 @@ export function ladeeinheiten(objekte) {
     const mitglieder = [];
     const sammle = (o) => { mitglieder.push(o); for (const k of kinder.get(o.id)) sammle(k); };
     sammle(w);
-    if (!mitglieder.some((o) => o.typ === 'ladung')) continue;
+    // leere liegende Paletten sind selbst Ladung (Leergut); hochkant stehende sind Lastverteiler/Füllmittel
+    if (!mitglieder.some((o) => o.typ === 'ladung') && (w.typ !== 'palette' || w.hochkant)) continue;
     const masse = mitglieder.reduce((s, o) => s + o.masse, 0);
     const mu = Math.min(...mitglieder.map((o) => fugenReibung(o, lage.get(o.id).traeger)));
     const fs = mitglieder.map(fussabdruck);
@@ -190,6 +191,33 @@ export function direktKippmomente(p, d, lcN, f) {
   };
 }
 
+/** Schneidet die Strecke a→b den Quader q? (Slab-Verfahren) */
+export function streckeTrifftQuader(a, b, q) {
+  let t0 = 0, t1 = 1;
+  for (const k of ['x', 'y', 'z']) {
+    const d = b[k] - a[k], lo = q[`${k}0`], hi = q[`${k}1`];
+    if (Math.abs(d) < 1e-12) { if (a[k] <= lo || a[k] >= hi) return false; continue; }
+    let u = (lo - a[k]) / d, v = (hi - a[k]) / d;
+    if (u > v) [u, v] = [v, u];
+    t0 = Math.max(t0, u); t1 = Math.min(t1, v);
+    if (t0 >= t1) return false;
+  }
+  return true;
+}
+
+/** Erstes Objekt, durch das ein Gurtweg (Punktliste) läuft; RHM und ausgenommene Teile zählen nicht */
+export function gurtKollision(punkte, objekte, lage, ausgenommen) {
+  const rand = 0.02; // Berühren ist erlaubt
+  for (const o of objekte) {
+    if (o.typ === 'rhm' || ausgenommen.has(o.id)) continue;
+    const f = fussabdruck(o), y = lage.get(o.id)?.y ?? 0;
+    const q = { x0: f.x0 + rand, x1: f.x1 - rand, y0: y + rand, y1: y + o.h - rand, z0: f.z0 + rand, z1: f.z1 - rand };
+    if (q.y1 <= q.y0) continue;
+    for (let i = 0; i < punkte.length - 1; i++) if (streckeTrifftQuader(punkte[i], punkte[i + 1], q)) return o;
+  }
+  return null;
+}
+
 /** Vorspannkraft, mit der gerechnet wird: höchstens 0,5 · LC */
 export const rechenkraftDaN = (gurt) => Math.min(gurt.stf, gurt.lc / 2);
 
@@ -208,29 +236,39 @@ export function pruefe({ objekte, gurte, flaeche }) {
   // Beitrag jedes Gurts zu jeder Einheit
   const leer = () => ({ vorwaerts: 0, rueckwaerts: 0, rechts: 0, links: 0 });
   const beitrag = new Map(einheiten.map((e) => [e.id, { reib: 0, kipp: 0, gurte: [], kopf: { vorwaerts: 0, rueckwaerts: 0 }, direkt: leer(), moment: leer(), quellen: { vorwaerts: new Set(), rueckwaerts: new Set(), seitlich: new Set() } }]));
+  // Mangelhafte Gurte (laufen durch andere Teile, liegen auf nichts, fast senkrecht) zählen nicht
+  const mangel = (g, info, text) => {
+    hinweise.push({ art: 'gurt-mangel', id: g.id, text });
+    return { ...info, mangel: text };
+  };
+  const durch = (punkte, ausgenommen) => gurtKollision(punkte, objekte, lage, ausgenommen);
+  const mitgliedIds = (e, ...mehr) => new Set([...e.mitglieder.map((m) => m.id), ...mehr.filter(Boolean)]);
   const gurtInfo = gurte.map((g) => {
     if (istKopf(g)) {
       const e = einheiten.find((x) => x.mitglieder.some((m) => m.id === g.ziel));
-      if (!e) {
-        hinweise.push({ art: 'gurt', id: g.id, text: 'Kopfschlinge ohne Ladung.' });
-        return { id: g.id, art: 'kopf', getroffen: [], winkel: 0 };
-      }
+      if (!e) return mangel(g, { id: g.id, art: 'kopf', getroffen: [], winkel: 0 }, 'Kopfschlinge ohne Ladung.');
       const k = kopfLage(g, e, verteiler, flaeche);
+      const info = { id: g.id, art: 'kopf', getroffen: [e.id], ...k, faktor: undefined };
+      const Bz = flaeche.breite / 2 + ZURRPUNKT_AUSSEN;
+      const weg = [{ x: k.ankerX, y: 0, z: -Bz }, { x: k.x, y: k.y, z: k.z0 }, { x: k.x, y: k.y, z: k.z1 }, { x: k.ankerX, y: 0, z: Bz }];
+      const hindernis = durch(weg, mitgliedIds(e, k.lastverteiler?.id));
+      if (hindernis) return mangel(g, info, `Kopfschlinge läuft durch ${hindernis.name}.`);
       const b = beitrag.get(e.id);
       const kraft = g.lc * 10 * k.faktor(e.mu);
       b.kopf[k.richtung] += kraft;
       b.direkt[k.richtung] += kraft;
       b.quellen[k.richtung].add('kopf');
       b.gurte.push(g.id);
-      return { id: g.id, art: 'kopf', getroffen: [e.id], ...k, faktor: undefined };
+      return info;
     }
     if (g.art === 'direkt') {
       const e = einheiten.find((x) => x.mitglieder.some((m) => m.id === g.ziel));
-      if (!e) {
-        hinweise.push({ art: 'gurt', id: g.id, text: 'Direktzurrung ohne Ladung.' });
-        return { id: g.id, art: 'direkt', getroffen: [], winkel: 0 };
-      }
+      if (!e) return mangel(g, { id: g.id, art: 'direkt', getroffen: [], winkel: 0 }, 'Direktzurrung ohne Ladung.');
       const k = direktLage(g, e, flaeche);
+      const info = { id: g.id, art: 'direkt', getroffen: [e.id], ...k };
+      const hindernis = durch([k.p, k.a], mitgliedIds(e));
+      if (hindernis) return mangel(g, info, `Gurt läuft durch ${hindernis.name}.`);
+      if (Math.hypot(k.d.x, k.d.z) < 0.25) return mangel(g, info, 'Gurt fast senkrecht, hält so kaum. Ladung vom Rand abrücken oder Zurrpunkt weiter weg wählen.');
       const b = beitrag.get(e.id);
       const w = direktWirkung(k.d, g.lc * 10, e.mu);
       const mo = direktKippmomente(k.p, k.d, g.lc * 10, e.basis);
@@ -238,9 +276,15 @@ export function pruefe({ objekte, gurte, flaeche }) {
       for (const r of ['vorwaerts', 'rueckwaerts']) if (w[r] > 0) b.quellen[r].add(g.variante);
       if (w.rechts > 0 || w.links > 0) b.quellen.seitlich.add(g.variante);
       b.gurte.push(g.id);
-      return { id: g.id, art: 'direkt', getroffen: [e.id], ...k };
+      return info;
     }
     const gl = gurtLage(g, einheiten, B);
+    const info = { id: g.id, winkel: gl.winkel, getroffen: gl.getroffen.map((e) => e.id), hoehe: gl.hoehe ?? 0, z0: gl.z0, z1: gl.z1 };
+    if (!gl.getroffen.length) return mangel(g, info, 'Gurt liegt auf keiner Ladung.');
+    const weg = [{ x: g.x, y: 0, z: -B / 2 }, { x: g.x, y: gl.hoehe, z: gl.z0 }, { x: g.x, y: gl.hoehe, z: gl.z1 }, { x: g.x, y: 0, z: B / 2 }];
+    const hindernis = durch(weg, new Set(gl.getroffen.flatMap((e) => e.mitglieder.map((m) => m.id))));
+    if (hindernis) return mangel(g, info, `Gurt läuft durch ${hindernis.name}.`);
+    if (g.stf > g.lc / 2) hinweise.push({ art: 'gurt', id: g.id, text: `S_TF ${g.stf} daN ist mehr als 0,5 · LC; gerechnet wird mit ${g.lc / 2} daN.` });
     const ft = rechenkraftDaN(g) * 10; // N
     const k = g.zweiRatschen ? K_FAKTOR.zweiSpannelemente : K_FAKTOR.einSpannelement;
     for (const e of gl.getroffen) {
@@ -250,9 +294,7 @@ export function pruefe({ objekte, gurte, flaeche }) {
       b.kipp += ft * (e.basis.lz) * gl.sinAlpha * anteil;
       b.gurte.push(g.id);
     }
-    if (!gl.getroffen.length) hinweise.push({ art: 'gurt', id: g.id, text: 'Gurt liegt auf keiner Ladung.' });
-    if (g.stf > g.lc / 2) hinweise.push({ art: 'gurt', id: g.id, text: `S_TF ${g.stf} daN ist mehr als 0,5 · LC; gerechnet wird mit ${g.lc / 2} daN.` });
-    return { id: g.id, winkel: gl.winkel, getroffen: gl.getroffen.map((e) => e.id), hoehe: gl.hoehe ?? 0, z0: gl.z0, z1: gl.z1 };
+    return info;
   });
 
   // Formschluss nach vorne: an der Stirnwand oder an etwas, das selbst formschlüssig steht
@@ -311,6 +353,12 @@ export function pruefe({ objekte, gurte, flaeche }) {
     const ok = RICHTUNGEN.every((r) => richtungen[r].ok) && kippen.seitlich.ok && kippen.laengs.ok;
     return { id: e.id, einheit: e, richtungen, kippen, gurte: b.gurte, ok };
   });
+
+  // Hochkant-Paletten sind nur gehalten als Füllmittel (Formschluss) oder als Lastverteiler einer Kopfschlinge
+  for (const v of verteiler) {
+    const gehalten = vorne.has(v.id) || gurtInfo.some((i) => !i.mangel && i.lastverteiler?.id === v.id);
+    if (!gehalten) hinweise.push({ art: 'lose', id: v.id, text: 'Hochkant stehende Palette ist nicht gesichert: als Füllmittel vor die Ladung oder als Lastverteiler in eine Kopfschlinge stellen.' });
+  }
 
   if (stirnwandLast > STIRNWAND_KRAFT_N) hinweise.push({ art: 'stirnwand', text: `Last auf die Stirnwand ${Math.round(stirnwandLast / 10)} daN, zulässig sind höchstens 5000 daN.` });
   for (let i = 0; i < einheiten.length; i++) {
