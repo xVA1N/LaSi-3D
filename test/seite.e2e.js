@@ -82,9 +82,19 @@ pruefe(await seite.isHidden('#blatt'), 'Fertig schließt das Fenster');
 // Ziehen in der Draufsicht
 const z0 = (await objektById(kiste)).x;
 const p = await seite.evaluate((id) => window.lasi.bildschirm(id, -0.4, 1, 0.3), kiste);
-await seite.mouse.move(p.x, p.y);
-await seite.mouse.down();
+// erst nicht ausgewählt: Ziehen bewegt nur die Ansicht
+await seite.evaluate(() => document.querySelector('[data-blatt="fertig"]')?.click());
+const unberuehrt = (await objektById(kiste)).x;
+await seite.mouse.move(p.x, p.y); await seite.mouse.down();
 for (let i = 1; i <= 8; i++) await seite.mouse.move(p.x, p.y + i * 15);
+await seite.mouse.up(); await kurz();
+pruefe((await objektById(kiste)).x === unberuehrt, 'Nicht ausgewähltes Teil bleibt beim Wischen liegen');
+const p2 = await seite.evaluate((id) => window.lasi.bildschirm(id, -0.4, 1, 0.3), kiste);
+await seite.mouse.click(p2.x, p2.y); await kurz();
+pruefe(await seite.evaluate(() => window.lasi.auswahl()?.id) === kiste, 'Antippen wählt die Kiste aus');
+await seite.mouse.move(p2.x, p2.y);
+await seite.mouse.down();
+for (let i = 1; i <= 8; i++) await seite.mouse.move(p2.x, p2.y + i * 15);
 await seite.mouse.up(); await kurz();
 pruefe((await objektById(kiste)).x < z0 - 0.5, 'Ziehen in der Draufsicht verschiebt nach hinten');
 if (bilder) await seite.screenshot({ path: `${bilder}/oben-desktop.png` });
@@ -164,6 +174,22 @@ await seite.mouse.move(q.x, q.y); await seite.mouse.down();
 for (let i = 1; i <= 10; i++) await seite.mouse.move(q.x - i * 12, q.y + i * 4);
 await seite.mouse.up(); await kurz();
 pruefe(Math.abs((await objektById(box)).x - x3) > 0.2, 'Ziehen in 3D verschiebt');
+// zweiter Finger während des Ziehens: Verschieben wird abgebrochen, Teil springt zurück
+const x4 = (await objektById(box)).x;
+const q2 = await seite.evaluate((id) => window.lasi.bildschirm(id, -0.45, 0.98, 0.2), box);
+await seite.mouse.move(q2.x, q2.y); await seite.mouse.down();
+for (let i = 1; i <= 6; i++) await seite.mouse.move(q2.x - i * 12, q2.y + i * 4);
+await seite.waitForTimeout(100);
+const zwischendurch = (await objektById(box)).x;
+await seite.evaluate(({ x, y }) => {
+  const c = document.querySelector('#szene canvas');
+  c.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 77, isPrimary: false, pointerType: 'touch', clientX: x + 80, clientY: y, bubbles: true }));
+  c.dispatchEvent(new PointerEvent('pointerup', { pointerId: 77, isPrimary: false, pointerType: 'touch', clientX: x + 80, clientY: y, bubbles: true }));
+}, q2);
+await seite.mouse.up(); await kurz();
+// der künstliche Finger hat keine echte Zeiger-ID; die Kamerasteuerung meldet das, auf echten Geräten nicht
+for (let i = fehler.length - 1; i >= 0; i--) if (fehler[i].includes('setPointerCapture')) fehler.splice(i, 1);
+pruefe(Math.abs(zwischendurch - x4) > 0.1 && Math.abs((await objektById(box)).x - x4) < 1e-9, 'Zweiter Finger bricht das Verschieben ab');
 
 // Diagonal- und Schrägzurren
 await seite.selectOption('#fahrzeug', 'sattel'); await seite.click('#beispiel'); await kurz();
