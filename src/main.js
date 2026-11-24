@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { pruefe, fussabdruck, fugenReibung, rechenkraftDaN, kopfLage, STIRNWAND_KRAFT_N, MU_RHM } from './modell.js';
+import { pruefe, fussabdruck, fugenReibung, rechenkraftDaN, kopfLage, STIRNWAND_KRAFT_N, MU_RHM, ZURRPUNKT_AUSSEN } from './modell.js';
 import { FAHRZEUGE, LADEGUT, HILFSMITTEL, GURTTYPEN, MATERIALIEN, beispiel } from './daten.js';
 import { bewegGruppe, vereinigung, anWand, verschiebe, abstandVorne, unterlage, setzeUnterlage, freierGurtX, UEBERSTAND_MAX } from './aktionen.js';
 import { pruefeUebermass, GRENZEN } from './uebermass.js';
@@ -266,7 +266,8 @@ function baueGurt(g, info, gewaehlt) {
 
 function baueKopf(g, info, gewaehlt) {
   if (!info?.getroffen.length) return;
-  const { breite: B, hoehe: H } = fahrzeug();
+  const { hoehe: H } = fahrzeug();
+  const B = fahrzeug().breite + 2 * ZURRPUNKT_AUSSEN;
   const e = 0.03, richtung = info.richtung === 'rueckwaerts' ? -1 : 1, aussen = richtung * e;
   const v = [[info.ankerX, 0, -B / 2], [info.x + aussen, info.y, info.z0 - e], [info.x + aussen, info.y, info.z1 + e], [info.ankerX, 0, B / 2]]
     .map(([x, y, z]) => new THREE.Vector3(x, H + y, z));
@@ -301,6 +302,24 @@ function deckNachMinus(p) {
   return dahinter && !davor;
 }
 
+const ZURRART = { diagonal: 'Diagonalzurren', schraeg: 'Schrägzurren' };
+function baueDirekt(g, info, gewaehlt) {
+  if (!info?.getroffen.length) return;
+  const { hoehe: H } = fahrzeug();
+  const p = new THREE.Vector3(info.p.x, H + info.p.y, info.p.z), a = new THREE.Vector3(info.a.x, H, info.a.z);
+  const material = gewaehlt ? mat(0xffc400, { emissive: 0x664400 }) : mat(0xe8901a, { roughness: 0.5 });
+  const sichtbar = band(p, a, material, 0.05, 0.012);
+  sichtbar.castShadow = true;
+  ladungGruppe.add(sichtbar);
+  const treffer = band(p, a, unsichtbar, 0.25, 0.25);
+  treffer.userData.ziel = { art: 'gurt', id: g.id };
+  anklickbar.push(treffer);
+  ladungGruppe.add(treffer);
+  ladungGruppe.add(kasten(0.06, 0.06, 0.06, mat(0x30363b, { metalness: 0.6 }), p.x, p.y, p.z)); // Zurrpunkt an der Ladung
+  const r = p.clone().lerp(a, 0.65);
+  ladungGruppe.add(kasten(0.09, 0.13, 0.06, mat(0x8a949c, { metalness: 0.6, roughness: 0.4 }), r.x, r.y, r.z));
+}
+
 function zeichne() {
   leere(ladungGruppe);
   anklickbar = [];
@@ -313,7 +332,7 @@ function zeichne() {
   }
   for (const g of zustand.gurte) {
     const info = ergebnis.gurte.find((i) => i.id === g.id), gew = auswahl?.art === 'gurt' && auswahl.id === g.id;
-    if (g.art === 'kopf') baueKopf(g, info, gew); else baueGurt(g, info, gew);
+    if (g.art === 'kopf') baueKopf(g, info, gew); else if (g.art === 'direkt') baueDirekt(g, info, gew); else baueGurt(g, info, gew);
   }
   baueUebermass();
   baueMarken();
@@ -493,7 +512,7 @@ renderer.setAnimationLoop(() => {
 // ---------- Rechnen und Anzeigen ----------
 let geplant = false;
 function aktualisiere() {
-  zustand.gurte = zustand.gurte.filter((g) => g.art !== 'kopf' || objekt(g.ziel));
+  zustand.gurte = zustand.gurte.filter((g) => !g.ziel || objekt(g.ziel));
   ergebnis = pruefe({ ...zustand, flaeche: fahrzeug() });
   uebermass = pruefeUebermass({ objekte: zustand.objekte, lage: ergebnis.lage, fahrzeug: fahrzeug(), nutzlast: zustand.nutzlast });
   if (auswahl && !(gewaehltesObjekt() || gewaehlterGurt())) auswahl = null;
@@ -545,6 +564,11 @@ const einheitVon = (o) => ergebnis.ergebnisse.find((x) => x.einheit.mitglieder.s
 const SEITE = { hinten: 'hinten', vorne: 'vorne' };
 function gurtStatus(g) {
   const info = ergebnis.gurte.find((i) => i.id === g.id);
+  if (g.art === 'direkt') {
+    if (!info?.getroffen.length) return { ok: false, text: '✗ ohne Ladung' };
+    if (Math.hypot(info.d.x, info.d.z) < 0.25) return { ok: false, text: '✗ Gurt fast senkrecht, hält kaum: Ladung vom Rand abrücken oder Zurrpunkt weiter weg' };
+    return { ok: true, text: `α ≈ ${zahl(info.winkel, 0)}° · β ≈ ${zahl(info.beta, 0)}° · Zurrpunkt ${laenge(g.abstand)} ${g.ecke[0] === 'v' ? 'davor' : 'dahinter'}` };
+  }
   if (g.art === 'kopf') {
     if (!info?.getroffen.length) return { ok: false, text: '✗ ohne Ladung' };
     return { ok: true, text: `α ≈ ${zahl(info.winkel, 0)}° · β ≈ ${zahl(info.beta, 0)}°${info.lastverteiler ? ' · um Palette als Lastverteiler' : ''}` };
@@ -581,7 +605,7 @@ function zeigeErgebnis() {
       if (d.formschluss) text = 'Formschluss';
       else if (d.brauch === 0) text = 'hält durch Reibung';
       else if (d.hat === 0) text = 'ungesichert';
-      else text = `${d.methode === 'kopf' ? 'Kopfschlinge ' : ''}${zahl(d.auslastung * 100, 0)} % ausgelastet`;
+      else text = `${{ kopf: 'Kopfschlinge ', direkt: 'Direktzurren ' }[d.methode] ?? ''}${zahl(d.auslastung * 100, 0)} % ausgelastet`;
       return `<tr><td>${RNAME[k]}</td><td class="${d.ok ? 'gut' : 'schlecht'}">${text}</td></tr>`;
     }).join('');
     const kq = e.kippen.seitlich, kl = e.kippen.laengs;
@@ -615,10 +639,11 @@ function zeigeLeiste() {
       + knopf('gurt', '⇵', 'Gurt +', o.typ === 'rhm' ? 'disabled' : '') + knopf('bearbeiten', '✎', 'Bearbeiten') + knopf('kopieren', '⧉', 'Kopieren') + knopf('loeschen', '🗑', 'Löschen', 'class="rot"');
   } else {
     status = gurtStatus(g);
-    $('leiste-titel').textContent = g.art === 'kopf' ? `Kopfschlinge ${SEITE[g.seite]} · LC ${zahl(g.lc, 0)} daN` : `Zurrgurt · ${zahl(g.stf, 0)} daN`;
+    $('leiste-titel').textContent = g.art === 'kopf' ? `Kopfschlinge ${SEITE[g.seite]} · LC ${zahl(g.lc, 0)} daN`
+      : g.art === 'direkt' ? `${ZURRART[g.variante]} · LC ${zahl(g.lc, 0)} daN` : `Zurrgurt · ${zahl(g.stf, 0)} daN`;
     $('pad').classList.add('nur-laengs');
     $('leiste-knoepfe').classList.remove('vier');
-    $('leiste-knoepfe').innerHTML = knopf('bearbeiten', '✎', 'Bearbeiten') + (g.art === 'kopf' ? '' : knopf('kopieren', '⧉', 'Kopieren')) + knopf('loeschen', '🗑', 'Löschen', 'class="rot"');
+    $('leiste-knoepfe').innerHTML = knopf('bearbeiten', '✎', 'Bearbeiten') + (g.art === 'kopf' || g.art === 'direkt' ? '' : knopf('kopieren', '⧉', 'Kopieren')) + knopf('loeschen', '🗑', 'Löschen', 'class="rot"');
   }
   $('leiste-status').textContent = status.text;
   $('leiste-status').className = status.ok ? 'gut' : 'schlecht';
@@ -626,6 +651,12 @@ function zeigeLeiste() {
 
 const SCHRITT = 0.05;
 const traegtLast = (o) => zustand.objekte.some((a) => ergebnis.lage.get(a.id)?.traeger?.id === o.id);
+const direktAbstand = (v) => Math.round(Math.min(Math.max(v, 0), 4) * 100) / 100;
+let alleVierAn = true;
+// Wert eines Direktzurrgurts setzen, auf Wunsch für alle Gurte derselben Zurrung
+function setzeDirekt(g, name, wert) {
+  for (const x of zustand.gurte) if (x === g || (alleVierAn && x.gruppe && x.gruppe === g.gruppe)) x[name] = wert;
+}
 const kopfAbstand = (v) => Math.round(Math.min(Math.max(v, 0.2), 8) * 100) / 100;
 $('pad').addEventListener('click', (ev) => {
   const schub = ev.target.closest('[data-schub]')?.dataset.schub;
@@ -634,6 +665,7 @@ $('pad').addEventListener('click', (ev) => {
   const o = gewaehltesObjekt(), g = gewaehlterGurt();
   if (o) verschiebe(zustand.objekte, ergebnis.lage, o, laengs * SCHRITT, quer * SCHRITT, fahrzeug());
   if (g?.art === 'kopf') g.abstand = kopfAbstand(g.abstand + laengs * SCHRITT * (g.seite === 'vorne' ? -1 : 1));
+  else if (g?.art === 'direkt') setzeDirekt(g, 'abstand', direktAbstand(g.abstand + laengs * SCHRITT * (g.ecke[0] === 'v' ? 1 : -1)));
   else if (g) { const L = fahrzeug().laenge / 2; g.x = Math.round(Math.min(Math.max(g.x + laengs * SCHRITT, -L), L) * 1000) / 1000; }
   aendere();
 });
@@ -646,7 +678,7 @@ $('leiste-knoepfe').addEventListener('click', (ev) => {
 function fuehreAus(aktion) {
   const o = gewaehltesObjekt(), g = gewaehlterGurt();
   const L = fahrzeug().laenge;
-  if (aktion === 'bearbeiten') { if (o) oeffneObjektBlatt(); else if (g.art === 'kopf') oeffneKopfBlatt(); else oeffneGurtBlatt(); return; }
+  if (aktion === 'bearbeiten') { if (o) oeffneObjektBlatt(); else if (g.art === 'kopf') oeffneKopfBlatt(); else if (g.art === 'direkt') oeffneDirektBlatt(); else oeffneGurtBlatt(); return; }
   if (o) {
     const { wurzel, gruppe } = bewegGruppe(zustand.objekte, ergebnis.lage, o);
     if (aktion === 'anwand') anWand(zustand.objekte, ergebnis.lage, o, fahrzeug());
@@ -684,8 +716,8 @@ function fuehreAus(aktion) {
       }
       // Kopfschlingen an gelöschter Ladung: auf andere Ladung der Einheit umhängen, sonst entfernen
       const rest = e?.einheit.mitglieder.find((m) => m.typ === 'ladung' && !weg.has(m.id));
-      for (const k of zustand.gurte) if (k.art === 'kopf' && weg.has(k.ziel) && rest) k.ziel = rest.id;
-      zustand.gurte = zustand.gurte.filter((k) => k.art !== 'kopf' || !weg.has(k.ziel));
+      for (const k of zustand.gurte) if (k.ziel && weg.has(k.ziel) && rest) k.ziel = rest.id;
+      zustand.gurte = zustand.gurte.filter((k) => !k.ziel || !weg.has(k.ziel));
       auswahl = null;
     }
   } else if (g) {
@@ -792,6 +824,33 @@ function oeffneKopfBlatt() {
     ${fuss()}`);
 }
 
+function oeffneDirektBlatt() {
+  const g = gewaehlterGurt();
+  if (!g) return;
+  const anzahl = zustand.gurte.filter((x) => x.gruppe && x.gruppe === g.gruppe).length;
+  const ziel = objekt(g.ziel);
+  oeffneBlatt(`<h3 id="blatt-titel">${ZURRART[g.variante]}</h3><div class="lage" id="blatt-lage"></div>
+    <div class="drei" style="grid-template-columns:1fr 1fr">
+      ${feld('Zurrkraft LC', stepper('dlc', g.lc, { schritt: 500, min: 500, max: 10000, einheit: 'daN', nk: 0 }))}
+      ${feld('Zurrpunkt am Rahmen', stepper('dabstand', g.abstand, { schritt: 0.05, min: 0, max: 4, einheit: 'm', nk: 2 }))}
+    </div>
+    ${feld('Höhe des Zurrpunkts an der Ladung', stepper('anschlag', g.anschlag, { schritt: 0.05, min: 0.05, max: ziel ? +(ergebnis.lage.get(ziel.id).y + ziel.h).toFixed(2) : 4, einheit: 'm', nk: 2 }))}
+    ${anzahl > 1 ? `<div class="chips"><button type="button" data-alle class="${alleVierAn ? 'an' : ''}">für alle ${anzahl} Gurte übernehmen</button></div>` : ''}
+    <p class="werte">„Zurrpunkt am Rahmen“: wie weit der Zurrpunkt in Längsrichtung von der Ecke entfernt ist (0 = genau seitlich, Schrägzurren). Je Gurt gilt LC · (cos α · cos β + 0,75 · μ · sin α). Die Ladung braucht eigene Zurrpunkte mit mindestens dieser LC.</p>
+    <div class="fuss"><button type="button" class="gefahr" data-blatt="loeschen">Diesen löschen</button>${anzahl > 1 ? '<button type="button" class="gefahr" data-blatt="alle-loeschen">Alle löschen</button>' : ''}<button type="button" data-blatt="fertig">Fertig</button></div>`);
+}
+
+function neueDirektzurrung(ladung, variante) {
+  const e = einheitVon(ladung);
+  if (!e) return;
+  const gruppe = neueId('z');
+  const anschlag = Math.round(Math.min(0.5, e.einheit.hoehe / 2) * 100) / 100;
+  const neu = ['vl', 'vr', 'hl', 'hr'].map((ecke) => ({ id: neueId('g'), art: 'direkt', variante, gruppe, ziel: ladung.id, ecke, abstand: variante === 'diagonal' ? 1.0 : 0, anschlag, lc: 2500, stf: 500 }));
+  zustand.gurte.push(...neu);
+  auswahl = { art: 'gurt', id: neu[3].id };
+  aendere();
+}
+
 let verteilerAn = true;
 /**
  * Zu welcher Ladung ein Gurt gehört: Ladegut selbst, Ladung auf einer Palette/Matte,
@@ -828,6 +887,8 @@ function oeffneGurtWahl() {
       ${k('nieder', 'Niederzurren', 'quer über die Ladung, drückt sie auf die Fläche')}
       ${k('kopf-hinten', 'Kopfschlinge hinten', 'Schlinge um die Rückseite, hält gegen Rutschen nach hinten')}
       ${k('kopf-vorne', 'Kopfschlinge vorne', 'Schlinge um die Vorderseite, hält gegen Rutschen nach vorne')}
+      ${seite ? '' : k('diagonal', 'Diagonalzurren (4 Gurte)', 'von den Ecken schräg nach außen, hält längs und quer')}
+      ${seite ? '' : k('schraeg', 'Schrägzurren (4 Gurte)', 'von den Ecken quer zur Seite, hält seitlich')}
     </div>
     ${e && !seite ? `<div class="chips"><button type="button" data-verteiler class="${verteilerAn ? 'an' : ''}">Palette hochkant als Lastverteiler dazustellen</button></div>` : ''}
     ${seite ? '<p class="werte">Die Schlinge läuft um diese Palette und die Ladung dahinter.</p>' : ''}
@@ -876,6 +937,9 @@ function setzeWert(name, v) {
   } else if (g) {
     if (name === 'abstand') g.x = Math.round((fahrzeug().laenge / 2 - v) * 1000) / 1000;
     else if (name === 'zurrabstand') g.abstand = kopfAbstand(v);
+    else if (name === 'dlc') setzeDirekt(g, 'lc', v);
+    else if (name === 'dabstand') setzeDirekt(g, 'abstand', direktAbstand(v));
+    else if (name === 'anschlag') setzeDirekt(g, 'anschlag', v);
     else g[name] = v;
     if (name === 'stf') { for (const r of blattInhalt.querySelectorAll('[data-range="stf"]')) r.value = v; for (const i of blattInhalt.querySelectorAll('[data-feld="stf"] input')) if (+i.value !== v) i.value = v; }
     if (name === 'stf' || name === 'lc') for (const c of blattInhalt.querySelectorAll('[data-gurttyp]')) { const t = GURTTYPEN.find((x) => x.id === c.dataset.gurttyp); c.classList.toggle('an', t.stf === g.stf && t.lc === g.lc); }
@@ -896,6 +960,15 @@ blattInhalt.addEventListener('click', (ev) => {
     setzeWert(s.dataset.feld, +input.value);
   } else if (el.dataset.blatt === 'fertig') schliesseBlatt();
   else if (el.dataset.blatt === 'loeschen') fuehreAus('loeschen');
+  else if (el.dataset.blatt === 'alle-loeschen' && g) {
+    zustand.gurte = zustand.gurte.filter((x) => x.gruppe !== g.gruppe);
+    auswahl = null;
+    schliesseBlatt();
+    aendere();
+  } else if (el.hasAttribute('data-alle')) {
+    alleVierAn = !alleVierAn;
+    el.classList.toggle('an', alleVierAn);
+  }
   else if (el.dataset.unterlage && o) {
     setzeUnterlage(zustand.objekte, ergebnis.lage, o, el.dataset.unterlage, neueId);
     aendere();
@@ -935,7 +1008,8 @@ blattInhalt.addEventListener('click', (ev) => {
       neuerGurt(e ? freierGurtX(zustand.gurte, e.einheit.f) : ansicht === 'oben' ? steuerOben.target.x : 0);
     } else {
       const { ladung } = gurtZiel(sel);
-      if (ladung) neueKopfschlinge(ladung, art === 'kopf-hinten' ? 'hinten' : 'vorne');
+      if (ladung && (art === 'diagonal' || art === 'schraeg')) neueDirektzurrung(ladung, art);
+      else if (ladung) neueKopfschlinge(ladung, art === 'kopf-hinten' ? 'hinten' : 'vorne');
     }
   } else if (el.dataset.ladegut) {
     schliesseBlatt();
@@ -1053,7 +1127,7 @@ behaelter.addEventListener('pointerdown', (ev) => {
   if (ziel.art === 'objekt') ({ gruppe, wurzel } = bewegGruppe(zustand.objekte, ergebnis.lage, objekt(ziel.id)));
   const yEbene = fahrzeug().hoehe + (wurzel ? ergebnis.lage.get(wurzel.id).y : 0);
   const { punkt } = treffe(ev, yEbene);
-  ziehen = { ziel, wurzel, yEbene, start: punkt, bewegt: false, positionen: new Map(gruppe.map((a) => [a.id, { x: a.x, z: a.z }])), gurtX: ziel.art === 'gurt' ? (gurt(ziel.id).art === 'kopf' ? gurt(ziel.id).abstand : gurt(ziel.id).x) : 0 };
+  ziehen = { ziel, wurzel, yEbene, start: punkt, bewegt: false, positionen: new Map(gruppe.map((a) => [a.id, { x: a.x, z: a.z }])), gurtX: ziel.art === 'gurt' ? (gurt(ziel.id).art === 'kopf' || gurt(ziel.id).art === 'direkt' ? gurt(ziel.id).abstand : gurt(ziel.id).x) : 0 };
   renderer.domElement.setPointerCapture(ev.pointerId);
   if (wechsel) aktualisiere();
 }, { capture: true });
@@ -1065,7 +1139,10 @@ renderer.domElement.addEventListener('pointermove', (ev) => {
   const { punkt } = treffe(ev, ziehen.yEbene);
   if (!punkt) return;
   const dx = punkt.x - ziehen.start.x, dz = punkt.z - ziehen.start.z;
-  if (ziehen.ziel.art === 'gurt' && gurt(ziehen.ziel.id).art === 'kopf') {
+  if (ziehen.ziel.art === 'gurt' && gurt(ziehen.ziel.id).art === 'direkt') {
+    const g = gurt(ziehen.ziel.id);
+    g.abstand = direktAbstand(Math.round((ziehen.gurtX + dx * (g.ecke[0] === 'v' ? 1 : -1)) / RASTER) * RASTER);
+  } else if (ziehen.ziel.art === 'gurt' && gurt(ziehen.ziel.id).art === 'kopf') {
     const g = gurt(ziehen.ziel.id);
     g.abstand = kopfAbstand(Math.round((ziehen.gurtX + dx * (g.seite === 'vorne' ? -1 : 1)) / RASTER) * RASTER);
   } else if (ziehen.ziel.art === 'gurt') {
