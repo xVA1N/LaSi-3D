@@ -1148,22 +1148,37 @@ function einrasten(o, bewegt) {
 }
 
 // Erfasst den Druck vor der Kamerasteuerung, damit Ziehen die Ansicht nicht bewegt
+// Nur das ausgewählte Teil lässt sich ziehen. Ein anderes Teil wird beim Loslassen (Antippen) ausgewählt;
+// bis dahin bewegt die Geste die Ansicht. Kommt ein zweiter Finger dazu, wird das Ziehen abgebrochen.
+let tippZiel = null;
+const aktiveZeiger = new Set();
+function brichZiehenAb() {
+  if (!ziehen) return;
+  for (const [id, p] of ziehen.positionen) { const a = objekt(id); if (a) { a.x = p.x; a.z = p.z; } }
+  const g = ziehen.ziel.art === 'gurt' ? gurt(ziehen.ziel.id) : null;
+  if (g) { if (g.art === 'kopf' || g.art === 'direkt') g.abstand = ziehen.gurtX; else g.x = ziehen.gurtX; }
+  ziehen = null;
+  steuerung().enabled = true;
+  aktualisiere();
+}
+
 behaelter.addEventListener('pointerdown', (ev) => {
-  if (ev.target !== renderer.domElement || !ev.isPrimary) return;
+  if (ev.target !== renderer.domElement) return;
+  aktiveZeiger.add(ev.pointerId);
+  if (aktiveZeiger.size > 1) { brichZiehenAb(); tippZiel = null; druck = null; return; }
   druck = { x: ev.clientX, y: ev.clientY };
+  tippZiel = null;
   const { treffer } = treffe(ev, fahrzeug().hoehe);
   if (!treffer) return;
   const ziel = treffer.object.userData.ziel;
+  if (auswahl?.id !== ziel.id) { tippZiel = ziel; return; }
   steuerung().enabled = false;
-  const wechsel = auswahl?.id !== ziel.id;
-  auswahl = { ...ziel };
   let gruppe = [], wurzel = null;
   if (ziel.art === 'objekt') ({ gruppe, wurzel } = bewegGruppe(zustand.objekte, ergebnis.lage, objekt(ziel.id)));
   const yEbene = fahrzeug().hoehe + (wurzel ? ergebnis.lage.get(wurzel.id).y : 0);
   const { punkt } = treffe(ev, yEbene);
   ziehen = { ziel, wurzel, yEbene, start: punkt, bewegt: false, positionen: new Map(gruppe.map((a) => [a.id, { x: a.x, z: a.z }])), gurtX: ziel.art === 'gurt' ? (gurt(ziel.id).art === 'kopf' || gurt(ziel.id).art === 'direkt' ? gurt(ziel.id).abstand : gurt(ziel.id).x) : 0 };
   renderer.domElement.setPointerCapture(ev.pointerId);
-  if (wechsel) aktualisiere();
 }, { capture: true });
 
 renderer.domElement.addEventListener('pointermove', (ev) => {
@@ -1193,19 +1208,22 @@ renderer.domElement.addEventListener('pointermove', (ev) => {
 });
 
 function zeigerHoch(ev) {
+  aktiveZeiger.delete(ev.pointerId);
   if (ziehen) {
     const bewegt = ziehen.bewegt;
     ziehen = null;
     steuerung().enabled = true;
     if (bewegt) aendere();
-  } else if (druck && Math.hypot(ev.clientX - druck.x, ev.clientY - druck.y) < 6 && auswahl) {
-    auswahl = null; // Tippen ins Leere hebt die Auswahl auf
-    aktualisiere();
+  } else if (druck && Math.hypot(ev.clientX - druck.x, ev.clientY - druck.y) < 6) {
+    // Antippen: anderes Teil auswählen, ins Leere tippen hebt die Auswahl auf
+    if (tippZiel) { auswahl = { ...tippZiel }; aktualisiere(); }
+    else if (auswahl) { auswahl = null; aktualisiere(); }
   }
   druck = null;
+  tippZiel = null;
 }
 renderer.domElement.addEventListener('pointerup', zeigerHoch);
-renderer.domElement.addEventListener('pointercancel', zeigerHoch);
+renderer.domElement.addEventListener('pointercancel', (ev) => { aktiveZeiger.delete(ev.pointerId); brichZiehenAb(); druck = null; tippZiel = null; });
 
 // ---------- Ansicht umschalten ----------
 function setzeAnsicht(neu, erstesMal = false) {
