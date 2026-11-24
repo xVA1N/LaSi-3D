@@ -11,6 +11,7 @@ Ladungssicherung am Lkw in 3D: Beispiele durchgehen, Zurrarten vergleichen und d
 - **Fenster zum Bearbeiten:** Masse und Maße mit Plus/Minus, „Steht auf“ Ladefläche, Palette, RHM oder beides (legt die Unterlage automatisch darunter), unter „Mehr“ Material und Reibbeiwert
 - **Kopfschlinge (Direktzurren):** über „Gurt +“ hinten oder vorne um die Ladung; auf Wunsch wird eine Palette hochkant als Lastverteiler dazugestellt. Einstellbar: LC und Abstand der Zurrpunkte. Gerechnet je Schenkel mit LC · (cos α · cos β + 0,75 · μ · sin α); Niederzurren und Kopfschlinge werden nicht addiert, es zählt das günstigere
 - **Diagonal- und Schrägzurren (Direktzurren):** über „Gurt +“ je 4 Gurte von den Ecken der Ladung zu Zurrpunkten außen am Rahmen; diagonal schräg nach außen (hält längs und quer), schräg quer zur Seite (hält seitlich). Einstellbar: LC, Abstand des Zurrpunkts in Längsrichtung, Höhe des Zurrpunkts an der Ladung, wahlweise für alle 4 Gurte. Je Gurt LC · (cos α · cos β + 0,75 · μ · sin α), seitlich zählt die schwächere Seite; Kippen über die Momente der Gurte. Kopfschlinge und Diagonal-/Schrägzurren werden addiert
+- **Einzelgurt frei spannen:** über „Gurt +“ ein Gurt von einer wählbaren Ecke der Ladung zu einem beliebigen Zurrpunkt am linken oder rechten Rahmen (alle 50 cm); Pfeile und Ziehen springen von Zurrpunkt zu Zurrpunkt
 - **Paletten hochkant:** im Fenster „Lage“ liegend oder hochkant (1,2 oder 0,8 m breit); hochkant zwischen Ladung und Stirnwand zählt sie als Füllmittel für den Formschluss
 - **Zurrgurte (Niederzurren):** frei setzen und verschieben; im Fenster Vorspannkraft S_TF (Plus/Minus oder Schieberegler), Gurttyp, LC, Abstand zur Stirnwand und Ratsche auf einer oder beiden Seiten (k = 1,5 / 2)
 - **Ladereihen:** Einheiten, die sich in Längsrichtung überdecken, bilden eine Reihe; nummeriert von der Stirnwand nach hinten, im Wechsel blau/grün auf der Fläche und den Außenrahmen markiert, mit Schild „LR1“, „LR2“ …; die Ladereihe steht auch in der Prüfung und in der Leiste
@@ -52,7 +53,7 @@ npm run build && (npm run preview -- --port 4173 &) && npm run e2e   # Seitentes
 
 ## Nächste Schritte
 
-- Gurte frei zwischen beliebigen Zurrpunkten spannen, Zurrpunkte am Fahrzeug mit eigener Belastbarkeit
+- Zurrpunkte am Fahrzeug mit eigener Belastbarkeit, Zurrpunkte an der Ladung frei wählen
 - Formschluss nach hinten und zur Seite (Rungen, Bordwände, Füllmittel wie Luftkissen oder Leerpaletten)
 - Liegende Rollen mit Keilen, Coils, Fahrzeuge
 - Gurtschoner/Kantenschutz, Zwischenwandverschluss, Sperrbalken
