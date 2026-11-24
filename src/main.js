@@ -25,7 +25,9 @@ const gewaehlterGurt = () => (auswahl?.art === 'gurt' ? gurt(auswahl.id) : null)
 function lade() {
   try {
     const z = JSON.parse(localStorage.getItem(SPEICHER));
-    return z && Array.isArray(z.objekte) && Array.isArray(z.gurte) ? z : null;
+    if (!(z && Array.isArray(z.objekte) && Array.isArray(z.gurte))) return null;
+    for (const o of z.objekte) if (o.typ === 'rhm') o.name = 'RHM'; // früher „Antirutschmatte (RHM)“
+    return z;
   } catch { return null; }
 }
 function speichere() {
@@ -572,7 +574,7 @@ function einheitName(e) {
   for (const o of ladung) zaehl.set(o.name, (zaehl.get(o.name) ?? 0) + 1);
   let name = [...zaehl].map(([n, k]) => (k > 1 ? `${k} × ${n}` : n)).join(' + ');
   if (e.einheit.mitglieder.some((o) => o.typ === 'palette')) name += ' auf Palette';
-  if (e.einheit.rhm) name += ', Matte darunter';
+  if (e.einheit.rhm) name += ', RHM darunter';
   return name;
 }
 
@@ -738,7 +740,7 @@ function fuehreAus(aktion) {
       auswahl = { art: 'objekt', id: neu.get(o.id).id };
     }
     if (aktion === 'loeschen') {
-      // eigene Palette/Matte unter der Ladung mit entfernen, geteilte bleiben liegen
+      // eigene Palette/RHM unter der Ladung mit entfernen, geteilte bleiben liegen
       const u = unterlage(zustand.objekte, ergebnis.lage, o);
       const weg = new Set([o.id, ...(o.typ === 'ladung' && !u.geteilt ? u.kette.map((a) => a.id) : [])]);
       zustand.objekte = zustand.objekte.filter((a) => !weg.has(a.id));
@@ -811,8 +813,8 @@ function oeffneObjektBlatt() {
   if (o.typ !== 'rhm' && !o.hochkant) {
     const u = unterlage(zustand.objekte, ergebnis.lage, o);
     const wahl = o.typ === 'ladung'
-      ? [['flaeche', 'Ladefläche'], ['palette', 'Palette'], ['matte', 'Antirutschmatte'], ['palette-matte', 'Palette + Matte']]
-      : [['flaeche', 'Ladefläche'], ['matte', 'Antirutschmatte']];
+      ? [['flaeche', 'Ladefläche'], ['palette', 'Palette'], ['matte', 'RHM'], ['palette-matte', 'Palette + RHM']]
+      : [['flaeche', 'Ladefläche'], ['matte', 'RHM']];
     const gesperrt = u.geteilt || u.art === 'ladung';
     const notiz = u.geteilt ? '<p class="werte">Steht mit anderer Ladung auf derselben Unterlage; dort bearbeiten.</p>' : u.art === 'ladung' ? '<p class="werte">Steht auf anderer Ladung.</p>' : '';
     stehtAuf = feld(`Steht auf <span class="werte">· μ = ${zahl(fugenReibung(o, ergebnis.lage.get(o.id).traeger))}</span>`, `<div class="chips">${wahl.map(([k, t]) => `<button type="button" data-unterlage="${k}" class="${u.art === k ? 'an' : ''}" ${gesperrt ? 'disabled' : ''}>${t}</button>`).join('')}</div>${notiz}`);
@@ -887,7 +889,7 @@ function neueDirektzurrung(ladung, variante) {
 
 let verteilerAn = true;
 /**
- * Zu welcher Ladung ein Gurt gehört: Ladegut selbst, Ladung auf einer Palette/Matte,
+ * Zu welcher Ladung ein Gurt gehört: Ladegut selbst, Ladung auf einer Palette/RHM,
  * oder bei einer Hochkant-Palette die Ladung, an der sie steht (mit der passenden Seite).
  */
 function gurtZiel(o) {
@@ -1063,7 +1065,7 @@ blattInhalt.addEventListener('input', (ev) => {
 function oeffneKatalog() {
   oeffneBlatt(`<h3 id="blatt-titel">Ladegut hinzufügen</h3>
     <div class="katalog">${LADEGUT.map((v) => `<button type="button" data-ladegut="${v.art}"><i style="background:${css(FARBEN[v.art])}"></i><span>${esc(v.name)}<small>${zahl(v.masse, 0)} kg · ${v.form === 'zylinder' ? `Ø ${zahl(v.l)} m` : `${zahl(v.l)} × ${zahl(v.b)} m`}</small></span></button>`).join('')}</div>
-    <p class="werte">${gewaehltesObjekt()?.typ === 'palette' || gewaehltesObjekt()?.typ === 'rhm' ? 'Kommt auf die ausgewählte Palette bzw. Matte.' : 'Kommt an die nächste freie Stelle.'}</p>
+    <p class="werte">${gewaehltesObjekt()?.typ === 'palette' || gewaehltesObjekt()?.typ === 'rhm' ? 'Kommt auf die ausgewählte Palette bzw. RHM.' : 'Kommt an die nächste freie Stelle.'}</p>
     ${fuss(false)}`);
 }
 
@@ -1259,7 +1261,22 @@ $('nutzlast').addEventListener('input', () => { const v = +$('nutzlast').value; 
 zeigeNutzlast();
 $('ladegut-neu').addEventListener('click', oeffneKatalog);
 $('palette-neu').addEventListener('click', () => neuesObjekt(HILFSMITTEL.find((v) => v.art === 'europalette')));
-$('rhm-neu').addEventListener('click', () => neuesObjekt(HILFSMITTEL.find((v) => v.art === 'rhm')));
+// + RHM: unter das ausgewählte Ladegut bzw. die ausgewählte Palette legen, sonst an die nächste freie Stelle
+$('rhm-neu').addEventListener('click', () => {
+  const sel = gewaehltesObjekt();
+  if (sel && sel.typ !== 'rhm' && !sel.hochkant) {
+    // bei Ladung auf einer Palette kommt das RHM unter die Palette
+    const u = unterlage(zustand.objekte, ergebnis.lage, sel);
+    const ziel = u.art === 'palette' && !u.geteilt ? u.kette[0] : sel;
+    const uz = unterlage(zustand.objekte, ergebnis.lage, ziel);
+    if (!uz.geteilt && uz.art !== 'ladung') {
+      if (!uz.art.includes('matte')) setzeUnterlage(zustand.objekte, ergebnis.lage, ziel, uz.art === 'palette' ? 'palette-matte' : 'matte', neueId);
+      aendere();
+      return;
+    }
+  }
+  neuesObjekt(HILFSMITTEL.find((v) => v.art === 'rhm'));
+});
 $('gurt-neu').addEventListener('click', oeffneGurtWahl);
 $('ergebnis').addEventListener('click', (ev) => {
   const id = ev.target.closest('[data-waehle]')?.dataset.waehle;

@@ -40,10 +40,10 @@ test('Stapel: Ladung auf Palette wird eine Einheit mit kleinstem μ', () => {
   assert.equal(einheiten[0].mu, 0.3);
 });
 
-test('Rutschhemmende Matte unter der Palette hebt μ dieser Fuge auf 0,6', () => {
+test('RHM unter der Palette hebt μ dieser Fuge auf 0,6', () => {
   const objekte = [rhm('m', 0), palette('p', 0), { ...kiste('k', 0), b: 0.8 }];
   const { einheiten, lage } = ladeeinheiten(objekte);
-  assert.equal(lage.get('p').y, 0.008); // Palette liegt auf der 8 mm dicken Matte
+  assert.equal(lage.get('p').y, 0.008); // Palette liegt auf der 8 mm dicken RHM
   assert.equal(einheiten[0].mu, 0.45); // die Fuge Kiste/Palette bleibt bei 0,45
   const nurMatte = ladeeinheiten([rhm('m', 0), { ...kiste('k', 0), b: 0.8 }]);
   assert.equal(nurMatte.einheiten[0].mu, 0.6);

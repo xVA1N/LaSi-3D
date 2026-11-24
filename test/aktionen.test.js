@@ -8,9 +8,9 @@ let n = 0;
 const id = (p) => `${p}${++n}`;
 const kiste = (i, x, z = 0, mehr = {}) => ({ id: i, typ: 'ladung', name: 'Kiste', material: 'holz', masse: 500, l: 1.2, b: 1.0, h: 1, x, z, drehung: 0, ...mehr });
 const palette = (i, x, z = 0) => ({ id: i, typ: 'palette', art: 'europalette', name: 'Europalette', material: 'holz', masse: 25, l: 1.2, b: 0.8, h: 0.144, x, z, drehung: 0 });
-const matte = (i, x, z = 0) => ({ id: i, typ: 'rhm', art: 'rhm', name: 'Matte', material: 'rhm', masse: 0, l: 1.2, b: 0.8, h: 0.008, x, z, drehung: 0 });
+const matte = (i, x, z = 0) => ({ id: i, typ: 'rhm', art: 'rhm', name: 'RHM', material: 'rhm', masse: 0, l: 1.2, b: 0.8, h: 0.008, x, z, drehung: 0 });
 
-test('Ladung auf Palette und Matte bewegt die ganze Einheit, Ladung auf Ladung nur sich', () => {
+test('Ladung auf Palette und RHM bewegt die ganze Einheit, Ladung auf Ladung nur sich', () => {
   const o = [matte('m', 0), palette('p', 0), kiste('k', 0), kiste('oben', 0)];
   const lage = stapeln(o);
   assert.deepEqual(bewegGruppe(o, lage, o[2]).gruppe.map((a) => a.id).sort(), ['k', 'm', 'oben', 'p']);
@@ -48,7 +48,7 @@ test('Verschieben: seitlich bis 0,5 m, hinten bis 4 m Überstand, vorne bis zur 
   assert.equal(vereinigung(o).x1, 6.8);
 });
 
-test('Unterlage wechseln: Palette, Matte, beides, zurück auf die Fläche', () => {
+test('Unterlage wechseln: Palette, RHM, beides, zurück auf die Fläche', () => {
   const o = [kiste('k', 2)];
   assert.equal(unterlage(o, stapeln(o), o[0]).art, 'flaeche');
   assert.equal(setzeUnterlage(o, stapeln(o), o[0], 'palette-matte', id), true);
