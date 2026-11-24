@@ -2,15 +2,33 @@
 <html lang="de">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>LaSi 3D – Ladungssicherung</title>
   <link rel="stylesheet" href="./src/style.css">
 </head>
 <body>
   <main class="layout">
-    <section id="szene" aria-label="3D-Ansicht der Ladefläche">
+    <section id="szene" aria-label="Ansicht der Ladefläche">
+      <div id="marken" aria-hidden="true"></div>
       <div class="status" id="status" aria-live="polite"></div>
+      <div class="ansicht" role="group" aria-label="Ansicht">
+        <button type="button" data-ansicht="3d" class="an">3D</button>
+        <button type="button" data-ansicht="oben">Draufsicht</button>
+      </div>
+      <div id="mini" class="mini" hidden aria-label="Übersicht der ganzen Ladefläche"></div>
+
+      <div id="leiste" class="leiste" hidden>
+        <div class="kopf"><b id="leiste-titel"></b><span id="leiste-status"></span></div>
+        <div class="zeile">
+          <div class="pad" id="pad">
+            <span></span><button type="button" data-schub="0,1" aria-label="nach vorne">▲</button><span></span>
+            <button type="button" data-schub="-1,0" aria-label="nach links">◀</button><button type="button" data-schub="0,-1" aria-label="nach hinten">▼</button><button type="button" data-schub="1,0" aria-label="nach rechts">▶</button>
+          </div>
+          <div class="icons" id="leiste-knoepfe"></div>
+        </div>
+      </div>
     </section>
+
     <aside class="panel">
       <header>
         <h1>LaSi 3D</h1>
@@ -18,34 +36,39 @@
       </header>
 
       <section class="block">
-        <label>Fahrzeug <select id="fahrzeug"></select></label>
-        <div class="knoepfe">
-          <button id="beispiel" type="button">Beispiel laden</button>
-          <button id="leeren" type="button" class="leise">Alles entfernen</button>
-        </div>
-      </section>
-
-      <section class="block">
         <h2>Hinzufügen</h2>
-        <label>Ladegut <span class="zeile"><select id="ladegut"></select><button id="ladegut-neu" type="button">+</button></span></label>
         <div class="knoepfe">
-          <button id="palette-neu" type="button">+ Europalette</button>
-          <button id="rhm-neu" type="button">+ Antirutschmatte</button>
+          <button id="ladegut-neu" type="button">+ Ladegut</button>
+          <button id="palette-neu" type="button">+ Palette</button>
+          <button id="rhm-neu" type="button">+ Matte</button>
+          <button id="gurt-neu" type="button">+ Gurt</button>
         </div>
-        <label>Zurrgurt (Niederzurren) <span class="zeile"><select id="gurttyp"></select><button id="gurt-neu" type="button">+</button></span></label>
-        <p class="tipp">Antippen wählt aus, Ziehen verschiebt. Auf eine Palette oder Matte gezogen, steht die Ladung darauf.</p>
+        <p class="tipp">Neues erscheint an der nächsten freien Stelle und ist gleich ausgewählt. Antippen wählt aus, Ziehen verschiebt. In der Draufsicht schiebt ein Finger die Ansicht, zwei Finger zoomen.</p>
       </section>
-
-      <section class="block" id="auswahl" hidden></section>
 
       <section class="block">
         <h2>Prüfung</h2>
         <div id="ergebnis"></div>
       </section>
 
+      <section class="block">
+        <label>Fahrzeug <select id="fahrzeug"></select></label>
+        <div class="knoepfe">
+          <button id="beispiel" type="button" class="leise">Beispiel laden</button>
+          <button id="leeren" type="button" class="leise">Alles entfernen</button>
+        </div>
+      </section>
+
       <p class="hinweis">Lernhilfe nach dem Verfahren der EN 12195-1 (Niederzurren, Formschluss an der Stirnwand, Kippen). Reibbeiwerte sind Richtwerte; Stapel werden mit dem kleinsten Reibbeiwert gerechnet. Im Einsatz gelten Norm, Zertifikate und Herstellerangaben.</p>
     </aside>
   </main>
+
+  <div id="blatt" class="blatt-hg" hidden>
+    <div class="blatt" role="dialog" aria-modal="true" aria-labelledby="blatt-titel">
+      <div class="griff"></div>
+      <div id="blatt-inhalt"></div>
+    </div>
+  </div>
   <script type="module" src="./src/main.js"></script>
 </body>
 </html>

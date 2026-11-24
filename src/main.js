@@ -1,18 +1,23 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { pruefe, fussabdruck, fugenReibung, rechenkraftDaN, STIRNWAND_KRAFT_N } from './modell.js';
+import { pruefe, fussabdruck, fugenReibung, rechenkraftDaN, STIRNWAND_KRAFT_N, MU_RHM } from './modell.js';
 import { FAHRZEUGE, LADEGUT, HILFSMITTEL, GURTTYPEN, MATERIALIEN, beispiel } from './daten.js';
+import { bewegGruppe, vereinigung, anWand, verschiebe, abstandVorne, unterlage, setzeUnterlage, freierGurtX } from './aktionen.js';
 
 // ---------- Zustand ----------
 const SPEICHER = 'lasi3d-beladung';
 let zustand = lade() ?? { fahrzeugId: 'sattel', ...beispiel('sattel') };
 let auswahl = null; // { art: 'objekt' | 'gurt', id }
 let ergebnis = null;
+let ansicht = 'oben';
+try { ansicht = localStorage.getItem('lasi3d-ansicht') === '3d' ? '3d' : 'oben'; } catch { /* ohne Speicher: Draufsicht */ }
 let zaehler = 0;
 const neueId = (p) => `${p}${Date.now().toString(36)}${++zaehler}`;
 const fahrzeug = () => FAHRZEUGE.find((f) => f.id === zustand.fahrzeugId) ?? FAHRZEUGE[0];
 const objekt = (id) => zustand.objekte.find((o) => o.id === id);
 const gurt = (id) => zustand.gurte.find((g) => g.id === id);
+const gewaehltesObjekt = () => (auswahl?.art === 'objekt' ? objekt(auswahl.id) : null);
+const gewaehlterGurt = () => (auswahl?.art === 'gurt' ? gurt(auswahl.id) : null);
 
 function lade() {
   try {
@@ -24,8 +29,8 @@ function speichere() {
   try { localStorage.setItem(SPEICHER, JSON.stringify(zustand)); } catch { /* privater Modus: nicht speichern */ }
 }
 
-// ---------- Szene ----------
-// Achsen: x = Fahrtrichtung (vorne = +x, Stirnwand), y = oben, z = quer
+// ---------- Szene und Kameras ----------
+// Achsen: x = Fahrtrichtung (vorne = +x, Stirnwand), y = oben, z = quer (−z links, +z rechts)
 const behaelter = document.getElementById('szene');
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -34,10 +39,27 @@ behaelter.prepend(renderer.domElement);
 
 const szene = new THREE.Scene();
 szene.background = new THREE.Color(0xdfe6ea);
-const kamera = new THREE.PerspectiveCamera(45, 1, 0.1, 300);
-const steuerung = new OrbitControls(kamera, renderer.domElement);
-steuerung.enableDamping = true;
-steuerung.maxPolarAngle = Math.PI / 2 - 0.05;
+
+const kamera3d = new THREE.PerspectiveCamera(45, 1, 0.1, 300);
+const steuer3d = new OrbitControls(kamera3d, renderer.domElement);
+steuer3d.enableDamping = true;
+steuer3d.maxPolarAngle = Math.PI / 2 - 0.05;
+
+// Draufsicht: Stirnwand oben, ein Finger verschiebt die Ansicht, zwei Finger zoomen
+const HOEHE_OBEN = 10; // sichtbare Höhe in m bei Zoom 1
+const kameraOben = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 200);
+kameraOben.up.set(1, 0, 0);
+const steuerOben = new OrbitControls(kameraOben, renderer.domElement);
+steuerOben.enableRotate = false;
+steuerOben.screenSpacePanning = true;
+steuerOben.zoomToCursor = true;
+steuerOben.minZoom = 0.4;
+steuerOben.maxZoom = 8;
+steuerOben.mouseButtons = { LEFT: THREE.MOUSE.PAN, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN };
+steuerOben.touches = { ONE: THREE.TOUCH.PAN, TWO: THREE.TOUCH.DOLLY_PAN };
+
+const kamera = () => (ansicht === '3d' ? kamera3d : kameraOben);
+const steuerung = () => (ansicht === '3d' ? steuer3d : steuerOben);
 
 szene.add(new THREE.HemisphereLight(0xffffff, 0x8a8f86, 1.6));
 const sonne = new THREE.DirectionalLight(0xffffff, 2.2);
@@ -105,8 +127,32 @@ function baueFahrzeug() {
       lkw.add(rad);
     }
   }
-  kamera.position.set(-L * 0.45, 4 + L * 0.35, 6 + L * 0.8);
-  steuerung.target.set(L * 0.05, H, 0);
+  kamera3d.position.set(-L * 0.45, 4 + L * 0.35, 6 + L * 0.8);
+  steuer3d.target.set(L * 0.05, H, 0);
+  steuer3d.update();
+  rahmeOben();
+}
+
+// Draufsicht so einrichten, dass die Breite gut lesbar ist und die Stirnwand oben steht
+function rahmeOben(mitteX) {
+  const { laenge: L, breite: B } = fahrzeug();
+  const { clientWidth: w, clientHeight: h } = behaelter;
+  // Breite der Fläche plus Rand für Meterzahlen und Übersicht; auf breiten Bildschirmen höchstens 130 px/m
+  const pxM = Math.min(w / (B + 1.1), 130);
+  const zoom = Math.max(HOEHE_OBEN / (L + 1.5), (pxM * HOEHE_OBEN) / Math.max(h, 1));
+  kameraOben.zoom = zoom;
+  kameraOben.updateProjectionMatrix();
+  const sichtbar = HOEHE_OBEN / zoom;
+  const x = mitteX ?? L / 2 - sichtbar / 2 + 0.7;
+  setzeObenZiel(x);
+}
+function setzeObenZiel(x) {
+  const { laenge: L, hoehe: H } = fahrzeug();
+  const tx = Math.min(Math.max(x, -L / 2), L / 2 + 1);
+  steuerOben.target.set(tx, H, 0.1);
+  kameraOben.position.set(tx, H + 50, 0.1);
+  kameraOben.lookAt(steuerOben.target);
+  steuerOben.update();
 }
 
 // Ladung, Hilfsmittel, Gurte
@@ -114,7 +160,8 @@ const ladungGruppe = new THREE.Group();
 szene.add(ladungGruppe);
 let anklickbar = [];
 
-const FARBEN = { holzkiste: 0xc89b5f, gitterbox: 0x9aa3ab, ibc: 0xf2f2ee, fass: 0x1f5fa8, papierrolle: 0xd9c39a, kunststoffkisten: 0x2f7fd0, mauersteine: 0xd98a5a };
+const FARBEN = { holzkiste: 0xc89b5f, gitterbox: 0x9aa3ab, ibc: 0xf2f2ee, fass: 0x1f5fa8, papierrolle: 0xd9c39a, kunststoffkisten: 0x2f7fd0, mauersteine: 0xd98a5a, europalette: 0xd2b48c, rhm: 0x23272a };
+const css = (farbe) => `#${farbe.toString(16).padStart(6, '0')}`;
 
 function baueObjekt(o, y, status, gewaehlt) {
   const g = new THREE.Group();
@@ -122,11 +169,11 @@ function baueObjekt(o, y, status, gewaehlt) {
   g.rotation.y = o.drehung === 90 ? Math.PI / 2 : 0;
   const { l, b, h } = o;
   if (o.art === 'europalette') {
-    const holz = mat(0xd2b48c);
+    const holz = mat(FARBEN.europalette);
     g.add(kasten(l, 0.022, b, holz, 0, h - 0.011, 0));
     for (const z of [-b / 2 + 0.0725, 0, b / 2 - 0.0725]) { g.add(kasten(l, 0.1, 0.145, holz, 0, 0.072, z)); g.add(kasten(l, 0.022, 0.1, holz, 0, 0.011, z)); }
   } else if (o.typ === 'rhm') {
-    g.add(kasten(l, h, b, mat(0x23272a), 0, h / 2, 0));
+    g.add(kasten(l, h, b, mat(FARBEN.rhm), 0, h / 2, 0));
   } else if (o.form === 'zylinder') {
     const m = new THREE.Mesh(new THREE.CylinderGeometry(l / 2, l / 2, h, 32), mat(FARBEN[o.art] ?? 0x888888, { metalness: o.material === 'stahl' ? 0.3 : 0 }));
     m.position.y = h / 2;
@@ -154,7 +201,10 @@ function baueObjekt(o, y, status, gewaehlt) {
     umriss.position.y = h / 2;
     g.add(umriss);
   }
-  if (gewaehlt) g.add(kasten(l + 0.04, 0.012, b + 0.04, mat(0xffc400, { transparent: true, opacity: 0.6 }), 0, 0.006, 0));
+  if (gewaehlt) {
+    g.add(kasten(l + 0.06, 0.012, b + 0.06, mat(0xffc400, { transparent: true, opacity: 0.7 }), 0, 0.006, 0));
+    g.add(kasten(l + 0.02, 0.008, b + 0.02, mat(0xffc400, { transparent: true, opacity: 0.35, depthWrite: false }), 0, h + 0.012, 0));
+  }
   ladungGruppe.add(g);
 }
 
@@ -175,7 +225,7 @@ function baueGurt(g, info, gewaehlt) {
   const v = punkte.map(([z, y]) => new THREE.Vector3(g.x, H + y, z));
   const material = gewaehlt ? mat(0xffc400, { emissive: 0x664400 }) : liegt ? mat(0xe8901a, { roughness: 0.5 }) : mat(0xd2382c);
   for (let i = 0; i < v.length - 1; i++) {
-    const sichtbar = band(v[i], v[i + 1], material);
+    const sichtbar = band(v[i], v[i + 1], material, ansicht === 'oben' ? 0.07 : 0.05);
     sichtbar.castShadow = true;
     ladungGruppe.add(sichtbar);
     const treffer = band(v[i], v[i + 1], unsichtbar, 0.3, 0.2); // breitere Fläche zum Antippen
@@ -197,30 +247,134 @@ function zeichne() {
     baueObjekt(o, ergebnis.lage.get(o.id).y, o.typ === 'ladung' ? status.get(o.id) : undefined, gew);
   }
   for (const g of zustand.gurte) baueGurt(g, ergebnis.gurte.find((i) => i.id === g.id), auswahl?.art === 'gurt' && auswahl.id === g.id);
+  baueMarken();
+  baueMini();
 }
 
+// ---------- Beschriftungen über der Ansicht ----------
+const markenFeld = document.getElementById('marken');
+let marken = [];
+const pxProMeter = () => (ansicht === 'oben' ? (behaelter.clientHeight * kameraOben.zoom) / HOEHE_OBEN : Infinity);
+const laenge = (m) => (Math.abs(m) < 1 ? `${Math.round(m * 100)} cm` : `${zahl(m, 2)} m`);
+
+function marke(klasse, html, punkt, nurOben = false) {
+  const el = document.createElement('div');
+  el.className = `marke ${klasse}`;
+  el.innerHTML = html;
+  markenFeld.append(el);
+  marken.push({ el, punkt, nurOben, klasse });
+}
+function baueMarken() {
+  markenFeld.textContent = '';
+  marken = [];
+  const { laenge: L, breite: B, hoehe: H } = fahrzeug();
+  if (ansicht === 'oben') {
+    for (let m = 0; m <= Math.floor(L); m++) marke('meter', `${m} m`, new THREE.Vector3(L / 2 - m, H, -B / 2 - 0.12), true);
+    marke('wand', '▲ Stirnwand · Fahrtrichtung', new THREE.Vector3(L / 2 + 0.9, H + 3.5, 0), true);
+    for (const o of zustand.objekte) {
+      if (o.typ !== 'ladung') continue;
+      const kurz = o.name.split(/[ ,]/)[0];
+      marke('name', `${esc(kurz)}<small>${zahl(o.masse, 0)} kg</small>`, new THREE.Vector3(o.x, H + ergebnis.lage.get(o.id).y + o.h, o.z), true);
+    }
+  }
+  const o = gewaehltesObjekt();
+  if (o) {
+    const a = abstandVorne(zustand.objekte, ergebnis.lage, o, fahrzeug());
+    const u = vereinigung(bewegGruppe(zustand.objekte, ergebnis.lage, o).gruppe);
+    const davor = a.bis && (a.bis.typ === 'ladung' ? a.bis : zustand.objekte.find((x) => x.typ === 'ladung' && bewegGruppe(zustand.objekte, ergebnis.lage, x).gruppe.includes(a.bis)) ?? a.bis);
+    const text = a.bis
+      ? `↑ ${laenge(a.abstand)} bis ${esc(davor.name.split(/[ ,]/)[0])}<br>${laenge(a.stirnwand)} bis Stirnwand`
+      : `↑ ${laenge(a.stirnwand)} bis Stirnwand`;
+    marke('abstand', text, new THREE.Vector3(u.x1, H + ergebnis.lage.get(o.id).y + o.h, (u.z0 + u.z1) / 2));
+  }
+  setzeMarken();
+}
+const projektion = new THREE.Vector3();
+function setzeMarken() {
+  const w = behaelter.clientWidth, h = behaelter.clientHeight;
+  const klein = pxProMeter() < 45;
+  for (const m of marken) {
+    projektion.copy(m.punkt).project(kamera());
+    const x = ((projektion.x + 1) / 2) * w, y = ((1 - projektion.y) / 2) * h;
+    const weg = projektion.z > 1 || x < -100 || x > w + 100 || y < -50 || y > h + 50 || (m.nurOben && ansicht !== 'oben') || (klein && m.klasse === 'name');
+    m.el.style.display = weg ? 'none' : '';
+    if (weg) continue;
+    const links = m.klasse === 'abstand' ? Math.min(Math.max(x, 8), w - m.el.offsetWidth - 8) : x;
+    m.el.style.left = `${links}px`;
+    m.el.style.top = `${m.klasse === 'abstand' ? Math.max(y, m.el.offsetHeight + 56) : y}px`;
+  }
+}
+
+// Übersicht der ganzen Fläche in der Draufsicht; Antippen springt dorthin
+const mini = document.getElementById('mini');
+const MINI_BREITE = 30;
+function baueMini() {
+  if (ansicht !== 'oben') return;
+  const { laenge: L, breite: B } = fahrzeug();
+  const k = MINI_BREITE / B;
+  mini.style.height = `${L * k}px`;
+  const reihenfolge = { rhm: 0, palette: 1, ladung: 2 };
+  const objekte = [...zustand.objekte].sort((a, b) => reihenfolge[a.typ] - reihenfolge[b.typ]);
+  mini.innerHTML = objekte.map((o) => {
+    const f = fussabdruck(o);
+    const farbe = auswahl?.id === o.id ? '#ffc400' : css(FARBEN[o.art] ?? 0x999999);
+    return `<i style="top:${(L / 2 - f.x1) * k}px;left:${(f.z0 + B / 2) * k}px;width:${Math.max(f.lz * k - 1, 1)}px;height:${Math.max(f.lx * k - 1, 1)}px;background:${farbe}"></i>`;
+  }).join('') + '<u id="mini-sicht"></u>';
+}
+function setzeMiniSicht() {
+  const u = document.getElementById('mini-sicht');
+  if (!u) return;
+  const { laenge: L, breite: B } = fahrzeug();
+  const k = MINI_BREITE / B;
+  const halb = HOEHE_OBEN / kameraOben.zoom / 2;
+  const oben = Math.max(0, (L / 2 - (steuerOben.target.x + halb)) * k), unten = Math.min(L * k, (L / 2 - (steuerOben.target.x - halb)) * k);
+  u.style.top = `${oben}px`;
+  u.style.height = `${Math.max(unten - oben, 4)}px`;
+}
+function miniSprung(ev) {
+  const r = mini.getBoundingClientRect();
+  const { laenge: L } = fahrzeug();
+  setzeObenZiel(L / 2 - ((ev.clientY - r.top) / r.height) * L);
+}
+mini.addEventListener('pointerdown', (ev) => { ev.stopPropagation(); mini.setPointerCapture(ev.pointerId); miniSprung(ev); });
+mini.addEventListener('pointermove', (ev) => { if (mini.hasPointerCapture(ev.pointerId)) miniSprung(ev); });
+
+let letzteHoehe = 0;
 function groesse() {
   const { clientWidth: w, clientHeight: h } = behaelter;
   renderer.setSize(w, h, false);
-  kamera.aspect = w / h;
-  kamera.updateProjectionMatrix();
+  kamera3d.aspect = w / h;
+  kamera3d.updateProjectionMatrix();
+  const a = w / Math.max(h, 1);
+  if (letzteHoehe && h && h !== letzteHoehe) kameraOben.zoom *= letzteHoehe / h;
+  letzteHoehe = h;
+  Object.assign(kameraOben, { left: (-HOEHE_OBEN * a) / 2, right: (HOEHE_OBEN * a) / 2, top: HOEHE_OBEN / 2, bottom: -HOEHE_OBEN / 2 });
+  kameraOben.updateProjectionMatrix();
 }
 new ResizeObserver(groesse).observe(behaelter);
-renderer.setAnimationLoop(() => { steuerung.update(); renderer.render(szene, kamera); });
+renderer.setAnimationLoop(() => {
+  steuerung().update();
+  renderer.render(szene, kamera());
+  setzeMarken();
+  if (ansicht === 'oben') setzeMiniSicht();
+});
 
 // ---------- Rechnen und Anzeigen ----------
 let geplant = false;
-function aktualisiere({ panel = true } = {}) {
+function aktualisiere() {
   ergebnis = pruefe({ ...zustand, flaeche: fahrzeug() });
+  if (auswahl && !(gewaehltesObjekt() || gewaehlterGurt())) auswahl = null;
   zeichne();
   zeigeErgebnis();
-  if (panel) zeigeAuswahl(); else auswahlWerte();
+  zeigeLeiste();
+  blattLage();
 }
 function aktualisiereBald() {
   if (geplant) return;
   geplant = true;
-  requestAnimationFrame(() => { geplant = false; aktualisiere({ panel: false }); });
+  requestAnimationFrame(() => { geplant = false; aktualisiere(); });
 }
+function aendere() { speichere(); aktualisiere(); }
 
 const $ = (id) => document.getElementById(id);
 const zahl = (v, s = 2) => Number(v).toLocaleString('de-DE', { maximumFractionDigits: s });
@@ -237,11 +391,35 @@ function einheitName(e) {
   return name;
 }
 
+/** Kurzer Status der Einheit, zu der ein Objekt gehört: { ok, text } */
+function objektStatus(o) {
+  const e = ergebnis.ergebnisse.find((x) => x.einheit.mitglieder.some((m) => m.id === o.id));
+  if (!e) return { ok: true, text: 'trägt keine Ladung' };
+  const probleme = [];
+  for (const [r, d] of Object.entries(e.richtungen)) if (!d.ok) probleme.push(d.hat === 0 ? `${RNAME[r]} ungesichert` : `${RNAME[r]} ${zahl(d.auslastung * 100, 0)} %`);
+  if (!e.kippen.seitlich.ok) probleme.push('kippt quer');
+  if (!e.kippen.laengs.ok) probleme.push('kippt längs');
+  const ids = new Set(e.einheit.mitglieder.map((m) => m.id));
+  if (ergebnis.hinweise.some((h) => h.art === 'kollision' && h.ids.some((i) => ids.has(i)))) probleme.push('überschneidet sich');
+  if (ergebnis.hinweise.some((h) => h.art === 'ueberstand' && ids.has(h.id))) probleme.push('steht über');
+  if (!probleme.length) {
+    const max = Math.max(...Object.values(e.richtungen).filter((d) => !d.formschluss && d.brauch > 0).map((d) => d.auslastung), 0);
+    return { ok: true, text: max > 0 ? `✓ gesichert · höchstens ${zahl(max * 100, 0)} % ausgelastet` : '✓ gesichert' };
+  }
+  return { ok: false, text: `✗ ${probleme.slice(0, 2).join(', ')}` };
+}
+function gurtStatus(g) {
+  const info = ergebnis.gurte.find((i) => i.id === g.id);
+  if (!info?.getroffen.length) return { ok: false, text: '✗ liegt auf keiner Ladung' };
+  const gekappt = g.stf > g.lc / 2 ? ` · gerechnet mit ${rechenkraftDaN(g)} daN` : '';
+  return { ok: true, text: `α ≈ ${zahl(info.winkel, 0)}° · über ${info.getroffen.length} Einheit${info.getroffen.length === 1 ? '' : 'en'}${gekappt}` };
+}
+
 function zeigeErgebnis() {
   const r = ergebnis;
   const offen = r.ergebnisse.filter((e) => !e.ok).length;
   const leer = r.ergebnisse.length === 0;
-  $('status').textContent = leer ? 'Keine Ladung' : r.ok ? '✓ Ladung gesichert' : `✗ ${offen ? `${offen} von ${r.ergebnisse.length} Einheiten nicht gesichert` : 'Bitte Hinweise prüfen'}`;
+  $('status').textContent = leer ? 'Keine Ladung' : r.ok ? '✓ Ladung gesichert' : `✗ ${offen ? `${offen} von ${r.ergebnisse.length} nicht gesichert` : 'Hinweise prüfen'}`;
   $('status').className = `status ${leer ? '' : r.ok ? 'gut' : 'schlecht'}`;
   const meldungen = r.hinweise.map((h) => `<li class="${h.art === 'gurt' ? '' : 'schlecht'}">${esc(h.text)}</li>`).join('');
   const wand = r.stirnwandLast > 0 ? `<p class="werte">Stirnwand: ${zahl(r.stirnwandLast / 10, 0)} daN von ${zahl(STIRNWAND_KRAFT_N / 10, 0)} daN</p>` : '';
@@ -267,157 +445,290 @@ function zeigeErgebnis() {
   $('ergebnis').innerHTML = `${meldungen ? `<ul class="meldungen">${meldungen}</ul>` : ''}${wand}${karten || '<p class="werte">Noch keine Ladung auf der Fläche.</p>'}`;
 }
 
-function zeigeAuswahl() {
-  const feld = $('auswahl');
-  if (auswahl?.art === 'objekt' && objekt(auswahl.id)) {
-    const o = objekt(auswahl.id);
-    const zyl = o.form === 'zylinder';
-    const masse = o.typ === 'rhm' ? '' : `<label>Masse (kg)<input type="number" min="1" step="10" data-feld="masse" value="${o.masse}"></label>`;
-    const masse3 = zyl
-      ? `<label>Ø (m)<input type="number" min="0.1" step="0.05" data-feld="durchmesser" value="${o.l}"></label><label>Höhe (m)<input type="number" min="0.1" step="0.05" data-feld="h" value="${o.h}"></label>`
-      : `<label>Länge (m)<input type="number" min="0.1" step="0.05" data-feld="l" value="${o.l}"></label><label>Breite (m)<input type="number" min="0.1" step="0.05" data-feld="b" value="${o.b}"></label>${o.typ === 'rhm' ? '' : `<label>Höhe (m)<input type="number" min="0.01" step="0.05" data-feld="h" value="${o.h}"></label>`}`;
+// ---------- Leiste am ausgewählten Teil ----------
+function zeigeLeiste() {
+  const leiste = $('leiste');
+  const o = gewaehltesObjekt(), g = gewaehlterGurt();
+  if (!o && !g) { leiste.hidden = true; return; }
+  leiste.hidden = false;
+  const knopf = (aktion, symbol, text, extra = '') => `<button type="button" data-aktion="${aktion}" ${extra}><em>${symbol}</em>${text}</button>`;
+  let status;
+  if (o) {
+    status = objektStatus(o);
+    $('leiste-titel').textContent = o.typ === 'rhm' ? o.name : `${o.name} · ${zahl(o.masse, 0)} kg`;
+    $('pad').classList.remove('nur-laengs');
+    $('leiste-knoepfe').innerHTML = knopf('anwand', '⇧', 'An Wand') + knopf('drehen', '⟳', 'Drehen', o.form === 'zylinder' ? 'disabled' : '')
+      + knopf('gurt', '⇵', 'Gurt +', o.typ === 'rhm' ? 'disabled' : '') + knopf('bearbeiten', '✎', 'Bearbeiten') + knopf('kopieren', '⧉', 'Kopieren') + knopf('loeschen', '🗑', 'Löschen', 'class="rot"');
+  } else {
+    status = gurtStatus(g);
+    $('leiste-titel').textContent = `Zurrgurt · ${zahl(g.stf, 0)} daN`;
+    $('pad').classList.add('nur-laengs');
+    $('leiste-knoepfe').innerHTML = knopf('bearbeiten', '✎', 'Bearbeiten') + knopf('kopieren', '⧉', 'Kopieren') + knopf('loeschen', '🗑', 'Löschen', 'class="rot"');
+  }
+  $('leiste-status').textContent = status.text;
+  $('leiste-status').className = status.ok ? 'gut' : 'schlecht';
+}
+
+const SCHRITT = 0.05;
+$('pad').addEventListener('click', (ev) => {
+  const schub = ev.target.closest('[data-schub]')?.dataset.schub;
+  if (!schub) return;
+  const [quer, laengs] = schub.split(',').map(Number);
+  const o = gewaehltesObjekt(), g = gewaehlterGurt();
+  if (o) verschiebe(zustand.objekte, ergebnis.lage, o, laengs * SCHRITT, quer * SCHRITT, fahrzeug());
+  if (g) { const L = fahrzeug().laenge / 2; g.x = Math.round(Math.min(Math.max(g.x + laengs * SCHRITT, -L), L) * 1000) / 1000; }
+  aendere();
+});
+
+$('leiste-knoepfe').addEventListener('click', (ev) => {
+  const aktion = ev.target.closest('[data-aktion]')?.dataset.aktion;
+  if (aktion) fuehreAus(aktion);
+});
+
+function fuehreAus(aktion) {
+  const o = gewaehltesObjekt(), g = gewaehlterGurt();
+  const L = fahrzeug().laenge;
+  if (aktion === 'bearbeiten') { if (o) oeffneObjektBlatt(); else oeffneGurtBlatt(); return; }
+  if (o) {
+    const { wurzel, gruppe } = bewegGruppe(zustand.objekte, ergebnis.lage, o);
+    if (aktion === 'anwand') anWand(zustand.objekte, ergebnis.lage, o, fahrzeug());
+    if (aktion === 'drehen') {
+      // Quer- und Längsmaß tauschen; Teile auf der Einheit drehen mit
+      for (const a of gruppe) {
+        const dx = a.x - wurzel.x, dz = a.z - wurzel.z;
+        a.x = wurzel.x + dz; a.z = wurzel.z + dx;
+        if (a.form !== 'zylinder') a.drehung = a.drehung === 90 ? 0 : 90;
+      }
+      ergebnis = pruefe({ ...zustand, flaeche: fahrzeug() });
+      verschiebe(zustand.objekte, ergebnis.lage, o, 0, 0, fahrzeug());
+    }
+    if (aktion === 'gurt') {
+      const e = ergebnis.ergebnisse.find((x) => x.einheit.mitglieder.some((m) => m.id === o.id));
+      neuerGurt(freierGurtX(zustand.gurte, e ? e.einheit.f : vereinigung(gruppe)));
+      return;
+    }
+    if (aktion === 'kopieren') {
+      const neu = new Map(gruppe.map((a) => [a.id, { ...a, id: neueId('o') }]));
+      const kopien = [...neu.values()];
+      const u = vereinigung(kopien);
+      const ziel = freieStelle(u.x1 - u.x0, u.z1 - u.z0);
+      for (const k of kopien) { k.x += ziel.x - (u.x0 + u.x1) / 2; k.z += ziel.z - (u.z0 + u.z1) / 2; }
+      zustand.objekte.push(...kopien);
+      auswahl = { art: 'objekt', id: neu.get(o.id).id };
+    }
+    if (aktion === 'loeschen') {
+      // eigene Palette/Matte unter der Ladung mit entfernen, geteilte bleiben liegen
+      const u = unterlage(zustand.objekte, ergebnis.lage, o);
+      const weg = new Set([o.id, ...(o.typ === 'ladung' && !u.geteilt ? u.kette.map((a) => a.id) : [])]);
+      zustand.objekte = zustand.objekte.filter((a) => !weg.has(a.id));
+      // Gurte, die nur über dieser Ladung lagen, gehen mit
+      const e = ergebnis.ergebnisse.find((x) => x.einheit.mitglieder.some((m) => m.id === o.id));
+      if (e && o.typ === 'ladung' && e.einheit.mitglieder.filter((m) => m.typ === 'ladung').length === 1) {
+        const nurHier = new Set(ergebnis.gurte.filter((i) => i.getroffen.length === 1 && i.getroffen[0] === e.id).map((i) => i.id));
+        zustand.gurte = zustand.gurte.filter((x) => !nurHier.has(x.id));
+      }
+      auswahl = null;
+    }
+  } else if (g) {
+    if (aktion === 'kopieren') {
+      const k = { ...g, id: neueId('g'), x: Math.max(g.x - 0.3, -L / 2) };
+      zustand.gurte.push(k);
+      auswahl = { art: 'gurt', id: k.id };
+    }
+    if (aktion === 'loeschen') { zustand.gurte = zustand.gurte.filter((x) => x !== g); auswahl = null; }
+  }
+  schliesseBlatt();
+  aendere();
+}
+
+// ---------- Fenster von unten ----------
+const blattHg = $('blatt'), blattInhalt = $('blatt-inhalt');
+function oeffneBlatt(html) {
+  blattInhalt.innerHTML = html;
+  blattHg.hidden = false;
+  blattLage();
+}
+function schliesseBlatt() { blattHg.hidden = true; blattInhalt.textContent = ''; }
+blattHg.addEventListener('click', (ev) => { if (ev.target === blattHg) schliesseBlatt(); });
+document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') schliesseBlatt(); });
+
+function stepper(feld, wert, { schritt, min, max, einheit = '', nk = 2, platzhalter = '' }) {
+  const v = wert === '' ? '' : Number(wert).toFixed(nk);
+  return `<div class="step" data-feld="${feld}" data-schritt="${schritt}" data-min="${min}" data-max="${max}" data-nk="${nk}">
+    <button type="button" data-d="-1" aria-label="weniger">−</button>
+    <input type="number" inputmode="decimal" step="any" value="${v}" placeholder="${platzhalter}" aria-label="${feld}">
+    ${einheit ? `<span class="einh">${einheit}</span>` : ''}
+    <button type="button" data-d="1" aria-label="mehr">+</button></div>`;
+}
+const feld = (titel, inhalt) => `<div class="feld"><span>${titel}</span>${inhalt}</div>`;
+const fuss = (loeschen = true) => `<div class="fuss">${loeschen ? '<button type="button" class="gefahr" data-blatt="loeschen">Löschen</button>' : ''}<button type="button" data-blatt="fertig">Fertig</button></div>`;
+
+function oeffneObjektBlatt() {
+  const o = gewaehltesObjekt();
+  if (!o) return;
+  const zyl = o.form === 'zylinder';
+  const m = { schritt: 0.05, min: 0.05, max: 15, einheit: '', nk: 2 };
+  let masse = '';
+  if (o.typ !== 'rhm') masse = feld('Masse', stepper('masse', o.masse, { schritt: o.masse >= 500 ? 50 : 10, min: 1, max: 40000, einheit: 'kg', nk: 0 }));
+  const masze = zyl
+    ? feld('Maße in m (Durchmesser · Höhe)', `<div class="drei" style="grid-template-columns:1fr 1fr">${stepper('durchmesser', o.l, m)}${stepper('h', o.h, m)}</div>`)
+    : o.typ === 'rhm'
+      ? feld('Maße in m (Länge · Breite)', `<div class="drei" style="grid-template-columns:1fr 1fr">${stepper('l', o.l, m)}${stepper('b', o.b, m)}</div>`)
+      : feld('Maße in m (Länge · Breite · Höhe)', `<div class="drei">${stepper('l', o.l, m)}${stepper('b', o.b, m)}${stepper('h', o.h, { ...m, min: 0.02 })}</div>`);
+  let stehtAuf = '';
+  if (o.typ !== 'rhm') {
+    const u = unterlage(zustand.objekte, ergebnis.lage, o);
+    const wahl = o.typ === 'ladung'
+      ? [['flaeche', 'Ladefläche'], ['palette', 'Palette'], ['matte', 'Antirutschmatte'], ['palette-matte', 'Palette + Matte']]
+      : [['flaeche', 'Ladefläche'], ['matte', 'Antirutschmatte']];
+    const gesperrt = u.geteilt || u.art === 'ladung';
+    const notiz = u.geteilt ? '<p class="werte">Steht mit anderer Ladung auf derselben Unterlage; dort bearbeiten.</p>' : u.art === 'ladung' ? '<p class="werte">Steht auf anderer Ladung.</p>' : '';
+    stehtAuf = feld(`Steht auf <span class="werte">· μ = ${zahl(fugenReibung(o, ergebnis.lage.get(o.id).traeger))}</span>`, `<div class="chips">${wahl.map(([k, t]) => `<button type="button" data-unterlage="${k}" class="${u.art === k ? 'an' : ''}" ${gesperrt ? 'disabled' : ''}>${t}</button>`).join('')}</div>${notiz}`);
+  }
+  let mehr = '';
+  if (o.typ !== 'rhm') {
+    const auto = fugenReibung({ ...o, mu: 0 }, ergebnis.lage.get(o.id).traeger);
     const material = o.typ === 'ladung'
-      ? `<label>Material Unterseite<select data-feld="material">${Object.entries(MATERIALIEN).map(([k, n]) => `<option value="${k}" ${k === o.material ? 'selected' : ''}>${n}</option>`).join('')}</select></label>`
+      ? `<label>Material der Unterseite<select data-feld="material">${Object.entries(MATERIALIEN).map(([k, n]) => `<option value="${k}" ${k === o.material ? 'selected' : ''}>${n}</option>`).join('')}</select></label>`
       : '';
-    const mu = o.typ === 'rhm' ? '' : `<label>Reibbeiwert μ (leer = automatisch)<input type="number" min="0.05" max="1" step="0.05" data-feld="mu" value="${o.mu || ''}" placeholder="automatisch"></label>`;
-    feld.innerHTML = `<h2>${esc(o.name)}</h2>
-      <div class="reihe">${masse}${mu}</div>
-      <div class="reihe3">${masse3}</div>
-      ${material}
-      <p class="werte" id="auswahl-werte"></p>
-      <div class="knoepfe">
-        ${zyl ? '' : '<button type="button" data-aktion="drehen">Drehen 90°</button>'}
-        <button type="button" data-aktion="kopieren">Kopieren</button>
-        ${o.typ === 'ladung' ? '<button type="button" data-aktion="gurt-darueber">Gurt darüber</button>' : ''}
-        <button type="button" class="gefahr" data-aktion="loeschen">Löschen</button>
-      </div>`;
-  } else if (auswahl?.art === 'gurt' && gurt(auswahl.id)) {
-    const g = gurt(auswahl.id);
-    const L = fahrzeug().laenge;
-    feld.innerHTML = `<h2>Zurrgurt</h2>
-      <label>Vorspannkraft S<sub>TF</sub> (daN)<input type="number" min="10" max="2000" step="10" data-feld="stf" value="${g.stf}"></label>
-      <input type="range" min="50" max="1250" step="10" data-feld="stf" value="${g.stf}" aria-label="Vorspannkraft">
-      <div class="reihe">
-        <label>Zurrkraft LC (daN)<input type="number" min="100" step="100" data-feld="lc" value="${g.lc}"></label>
-        <label>Abstand Stirnwand (m)<input type="number" min="0" max="${L}" step="0.05" data-feld="abstand" value="${+(L / 2 - g.x).toFixed(2)}"></label>
-      </div>
-      <label class="haken"><input type="checkbox" data-feld="zweiRatschen" ${g.zweiRatschen ? 'checked' : ''}> Ratsche auf beiden Seiten (k = 2)</label>
-      <p class="werte" id="auswahl-werte"></p>
-      <div class="knoepfe"><button type="button" data-aktion="kopieren">Kopieren</button><button type="button" class="gefahr" data-aktion="loeschen">Löschen</button></div>`;
-  } else {
-    auswahl = null;
-    feld.hidden = true;
-    return;
+    mehr = `<details class="mehr"><summary>Mehr: ${o.typ === 'ladung' ? 'Material, ' : ''}Reibbeiwert μ</summary><div class="inhalt">${material}
+      ${feld('Reibbeiwert μ der Fuge darunter', `${stepper('mu', o.mu || auto, { schritt: 0.05, min: 0.05, max: 1, nk: 2 })}<div class="chips" style="margin-top:6px"><button type="button" data-mu-auto class="${o.mu ? '' : 'an'}">automatisch (${zahl(auto)})</button></div>`)}
+      </div></details>`;
   }
-  feld.hidden = false;
-  auswahlWerte();
+  oeffneBlatt(`<h3 id="blatt-titel">${esc(o.name)}</h3><div class="lage" id="blatt-lage"></div>${masse}${masze}${stehtAuf}${mehr}${fuss()}`);
 }
 
-function auswahlWerte() {
-  const ziel = $('auswahl-werte');
-  if (!ziel || !auswahl) return;
-  if (auswahl.art === 'objekt') {
-    const o = objekt(auswahl.id);
-    if (!o) return;
-    const { traeger } = ergebnis.lage.get(o.id);
-    const auf = !traeger ? 'Ladefläche' : traeger.typ === 'palette' ? 'Palette' : traeger.typ === 'rhm' ? 'Antirutschmatte' : traeger.name;
-    ziel.textContent = o.typ === 'rhm' ? `μ = ${zahl(0.6)} für alles, was darauf steht` : `steht auf: ${auf} · μ dieser Fuge = ${zahl(fugenReibung(o, traeger))}`;
-  } else {
-    const g = gurt(auswahl.id), info = ergebnis.gurte.find((i) => i.id === auswahl.id);
-    if (!g || !info) return;
-    ziel.textContent = info.getroffen.length
-      ? `Zurrwinkel α ≈ ${zahl(info.winkel, 0)}° · über ${info.getroffen.length} Ladeeinheit${info.getroffen.length === 1 ? '' : 'en'} · gerechnet mit F_T = ${rechenkraftDaN(g)} daN`
-      : 'Liegt auf keiner Ladung. Zum Verschieben ziehen oder Abstand eingeben.';
-  }
+function oeffneGurtBlatt() {
+  const g = gewaehlterGurt();
+  if (!g) return;
+  const L = fahrzeug().laenge;
+  oeffneBlatt(`<h3 id="blatt-titel">Zurrgurt</h3><div class="lage" id="blatt-lage"></div>
+    ${feld('Vorspannkraft S<sub>TF</sub> (vom Etikett)', `${stepper('stf', g.stf, { schritt: 50, min: 50, max: 2000, einheit: 'daN', nk: 0 })}<input type="range" min="50" max="1250" step="10" value="${g.stf}" data-range="stf" aria-label="Vorspannkraft">`)}
+    ${feld('Gurttyp übernehmen', `<div class="chips">${GURTTYPEN.map((t) => `<button type="button" data-gurttyp="${t.id}" class="${t.stf === g.stf && t.lc === g.lc ? 'an' : ''}">${esc(t.name.replace('Zurrgurt, ', ''))} · ${t.stf} daN</button>`).join('')}</div>`)}
+    <div class="drei" style="grid-template-columns:1fr 1fr">
+      ${feld('Zurrkraft LC', stepper('lc', g.lc, { schritt: 500, min: 500, max: 10000, einheit: 'daN', nk: 0 }))}
+      ${feld('Abstand Stirnwand', stepper('abstand', L / 2 - g.x, { schritt: 0.05, min: 0, max: L, einheit: 'm', nk: 2 }))}
+    </div>
+    ${feld('Ratschen', `<div class="chips"><button type="button" data-ratschen="1" class="${g.zweiRatschen ? '' : 'an'}">eine Seite (k = 1,5)</button><button type="button" data-ratschen="2" class="${g.zweiRatschen ? 'an' : ''}">beide Seiten (k = 2)</button></div>`)}
+    ${fuss()}`);
 }
 
-// ---------- Bearbeiten ----------
-function feldAenderung(ev) {
-  const el = ev.target, feld = el.dataset.feld;
-  if (!feld || !auswahl) return;
-  if (auswahl.art === 'objekt') {
-    const o = objekt(auswahl.id);
-    if (feld === 'material') o.material = el.value;
-    else if (feld === 'mu') o.mu = el.value === '' ? 0 : Math.min(Math.max(+el.value, 0.05), 1);
-    else if (+el.value > 0) {
-      if (feld === 'durchmesser') { o.l = o.b = +el.value; } else o[feld] = +el.value;
-    } else return;
-  } else {
-    const g = gurt(auswahl.id);
-    const L = fahrzeug().laenge;
-    if (feld === 'zweiRatschen') g.zweiRatschen = el.checked;
-    else if (feld === 'abstand') { if (el.value === '') return; g.x = Math.min(Math.max(L / 2 - +el.value, -L / 2), L / 2); }
-    else if (+el.value > 0) {
-      g[feld] = +el.value;
-      if (feld === 'stf') for (const anderes of $('auswahl').querySelectorAll('[data-feld="stf"]')) if (anderes !== el) anderes.value = g.stf;
-    } else return;
+function blattLage() {
+  const ziel = $('blatt-lage');
+  if (!ziel || blattHg.hidden) return;
+  const o = gewaehltesObjekt(), g = gewaehlterGurt();
+  const s = o ? objektStatus(o) : g ? gurtStatus(g) : null;
+  if (!s) { schliesseBlatt(); return; }
+  const zusatz = o?.typ === 'rhm' ? ` · μ = ${zahl(MU_RHM)} für alles darauf` : '';
+  ziel.textContent = s.text + zusatz;
+  ziel.className = `lage ${s.ok ? 'gut' : 'schlecht'}`;
+}
+
+function setzeWert(name, v) {
+  const o = gewaehltesObjekt(), g = gewaehlterGurt();
+  if (o) {
+    if (name === 'durchmesser') { o.l = o.b = v; } else if (name === 'material') o.material = v; else o[name] = v;
+    if (name === 'mu') { const c = blattInhalt.querySelector('[data-mu-auto]'); c?.classList.remove('an'); }
+  } else if (g) {
+    if (name === 'abstand') g.x = Math.round((fahrzeug().laenge / 2 - v) * 1000) / 1000; else g[name] = v;
+    if (name === 'stf') { for (const r of blattInhalt.querySelectorAll('[data-range="stf"]')) r.value = v; for (const i of blattInhalt.querySelectorAll('[data-feld="stf"] input')) if (+i.value !== v) i.value = v; }
+    if (name === 'stf' || name === 'lc') for (const c of blattInhalt.querySelectorAll('[data-gurttyp]')) { const t = GURTTYPEN.find((x) => x.id === c.dataset.gurttyp); c.classList.toggle('an', t.stf === g.stf && t.lc === g.lc); }
   }
   speichere();
   aktualisiereBald();
 }
-$('auswahl').addEventListener('input', feldAenderung);
-$('auswahl').addEventListener('change', feldAenderung);
 
-$('auswahl').addEventListener('click', (ev) => {
-  const aktion = ev.target.closest('[data-aktion]')?.dataset.aktion;
-  if (!aktion || !auswahl) return;
-  if (auswahl.art === 'objekt') {
-    const o = objekt(auswahl.id);
-    if (aktion === 'drehen') o.drehung = o.drehung === 90 ? 0 : 90;
-    if (aktion === 'loeschen') { zustand.objekte = zustand.objekte.filter((x) => x !== o); auswahl = null; }
-    if (aktion === 'kopieren') { const k = { ...o, id: neueId('o') }; auswahl = null; platziereFrei(k); zustand.objekte.push(k); auswahl = { art: 'objekt', id: k.id }; }
-    if (aktion === 'gurt-darueber') { neuerGurt(o.x); return; }
-  } else {
-    const g = gurt(auswahl.id);
-    if (aktion === 'loeschen') { zustand.gurte = zustand.gurte.filter((x) => x !== g); auswahl = null; }
-    if (aktion === 'kopieren') { const k = { ...g, id: neueId('g'), x: Math.max(g.x - 0.5, -fahrzeug().laenge / 2) }; zustand.gurte.push(k); auswahl = { art: 'gurt', id: k.id }; }
+blattInhalt.addEventListener('click', (ev) => {
+  const el = ev.target.closest('button');
+  if (!el) return;
+  const o = gewaehltesObjekt(), g = gewaehlterGurt();
+  if (el.dataset.d) {
+    const s = el.closest('.step'), input = s.querySelector('input');
+    const { schritt, min, max, nk } = s.dataset;
+    const v = Math.min(Math.max((+input.value || 0) + +el.dataset.d * +schritt, +min), +max);
+    input.value = v.toFixed(+nk);
+    setzeWert(s.dataset.feld, +input.value);
+  } else if (el.dataset.blatt === 'fertig') schliesseBlatt();
+  else if (el.dataset.blatt === 'loeschen') fuehreAus('loeschen');
+  else if (el.dataset.unterlage && o) {
+    setzeUnterlage(zustand.objekte, ergebnis.lage, o, el.dataset.unterlage, neueId);
+    aendere();
+    oeffneObjektBlatt();
+  } else if (el.hasAttribute('data-mu-auto') && o) {
+    o.mu = 0;
+    aendere();
+    oeffneObjektBlatt();
+    blattInhalt.querySelector('details.mehr').open = true;
+  } else if (el.dataset.gurttyp && g) {
+    const t = GURTTYPEN.find((x) => x.id === el.dataset.gurttyp);
+    g.stf = t.stf; g.lc = t.lc;
+    aendere();
+    oeffneGurtBlatt();
+  } else if (el.dataset.ratschen && g) {
+    g.zweiRatschen = el.dataset.ratschen === '2';
+    aendere();
+    oeffneGurtBlatt();
+  } else if (el.dataset.ladegut) {
+    schliesseBlatt();
+    neuesObjekt(LADEGUT.find((v) => v.art === el.dataset.ladegut));
   }
-  speichere();
-  aktualisiere();
+});
+blattInhalt.addEventListener('input', (ev) => {
+  const el = ev.target;
+  if (el.dataset.range) { setzeWert(el.dataset.range, +el.value); return; }
+  if (el.dataset.feld === 'material') { setzeWert('material', el.value); return; }
+  const s = el.closest('.step');
+  if (!s || el.value === '') return;
+  const v = +el.value;
+  if (Number.isFinite(v) && v >= +s.dataset.min && v <= +s.dataset.max) setzeWert(s.dataset.feld, v);
 });
 
-$('ergebnis').addEventListener('click', (ev) => {
-  const id = ev.target.closest('[data-waehle]')?.dataset.waehle;
-  if (id) { auswahl = { art: 'objekt', id }; aktualisiere(); }
-});
+function oeffneKatalog() {
+  oeffneBlatt(`<h3 id="blatt-titel">Ladegut hinzufügen</h3>
+    <div class="katalog">${LADEGUT.map((v) => `<button type="button" data-ladegut="${v.art}"><i style="background:${css(FARBEN[v.art])}"></i><span>${esc(v.name)}<small>${zahl(v.masse, 0)} kg · ${v.form === 'zylinder' ? `Ø ${zahl(v.l)} m` : `${zahl(v.l)} × ${zahl(v.b)} m`}</small></span></button>`).join('')}</div>
+    <p class="werte">${gewaehltesObjekt()?.typ === 'palette' || gewaehltesObjekt()?.typ === 'rhm' ? 'Kommt auf die ausgewählte Palette bzw. Matte.' : 'Kommt an die nächste freie Stelle.'}</p>
+    ${fuss(false)}`);
+}
 
-// Freien Platz von der Stirnwand nach hinten suchen; Ladegut kommt auf eine ausgewählte Palette/Matte
-function platziereFrei(o) {
+// ---------- Hinzufügen ----------
+/** Freie Stelle für eine Grundfläche lx × lz suchen, von der Stirnwand nach hinten */
+function freieStelle(lx, lz) {
   const { laenge: L, breite: B } = fahrzeug();
-  const sel = auswahl?.art === 'objekt' ? objekt(auswahl.id) : null;
-  if (o.typ === 'ladung' && sel && sel.typ !== 'ladung') { o.x = sel.x; o.z = sel.z; o.drehung = sel.drehung; return; }
-  const andere = zustand.objekte.filter((a) => a.id !== o.id).map(fussabdruck);
-  for (let x = L / 2; x > -L / 2; x -= 0.05) {
+  const andere = zustand.objekte.map(fussabdruck);
+  for (let x = L / 2; x - lx >= -L / 2 - 1e-6; x -= 0.05) {
     for (const seite of [-1, 1, 0]) {
-      o.x = 0; o.z = 0;
-      const { lx, lz } = fussabdruck(o);
-      o.x = x - lx / 2;
-      o.z = seite * (B / 2 - lz / 2);
-      const f = fussabdruck(o);
-      if (f.x0 < -L / 2) continue;
-      if (!andere.some((a) => f.x0 < a.x1 - 1e-6 && a.x0 < f.x1 - 1e-6 && f.z0 < a.z1 - 1e-6 && a.z0 < f.z1 - 1e-6)) return;
+      const z = seite * (B / 2 - lz / 2);
+      const f = { x0: x - lx, x1: x, z0: z - lz / 2, z1: z + lz / 2 };
+      if (!andere.some((a) => f.x0 < a.x1 - 1e-6 && a.x0 < f.x1 - 1e-6 && f.z0 < a.z1 - 1e-6 && a.z0 < f.z1 - 1e-6)) return { x: Math.round((x - lx / 2) * 1000) / 1000, z };
     }
   }
-  o.x = 0; o.z = 0;
+  return { x: 0, z: 0 };
 }
 function neuesObjekt(vorlage) {
   const o = { typ: 'ladung', ...vorlage, id: neueId('o'), x: 0, z: 0, drehung: 0, mu: 0 };
-  platziereFrei(o);
+  const sel = gewaehltesObjekt();
+  if (o.typ === 'ladung' && sel && sel.typ !== 'ladung') { o.x = sel.x; o.z = sel.z; o.drehung = sel.drehung; }
+  else { const p = freieStelle(o.l, o.b); o.x = p.x; o.z = p.z; }
   zustand.objekte.push(o);
   auswahl = { art: 'objekt', id: o.id };
-  speichere();
-  aktualisiere();
+  aendere();
+  zeigeImBild(o.x);
 }
 function neuerGurt(x) {
-  const typ = GURTTYPEN.find((t) => t.id === $('gurttyp').value) ?? GURTTYPEN[0];
+  const typ = GURTTYPEN.find((t) => t.id === 'langhebel');
   const g = { id: neueId('g'), x, stf: typ.stf, lc: typ.lc, zweiRatschen: false };
   zustand.gurte.push(g);
   auswahl = { art: 'gurt', id: g.id };
-  speichere();
-  aktualisiere();
+  aendere();
+}
+// In der Draufsicht dorthin scrollen, wo gerade etwas hinzugekommen ist
+function zeigeImBild(x) {
+  if (ansicht !== 'oben') return;
+  const halb = HOEHE_OBEN / kameraOben.zoom / 2;
+  if (Math.abs(x - steuerOben.target.x) > halb * 0.7) setzeObenZiel(x);
 }
 
-// ---------- Ziehen in der 3D-Ansicht ----------
+// ---------- Ziehen in der Ansicht ----------
 const strahl = new THREE.Raycaster();
 const zeiger = new THREE.Vector2();
 let ziehen = null;
@@ -426,22 +737,8 @@ let druck = null;
 function treffe(ev, y) {
   const r = renderer.domElement.getBoundingClientRect();
   zeiger.set(((ev.clientX - r.left) / r.width) * 2 - 1, -((ev.clientY - r.top) / r.height) * 2 + 1);
-  strahl.setFromCamera(zeiger, kamera);
+  strahl.setFromCamera(zeiger, kamera());
   return { treffer: strahl.intersectObjects(anklickbar, false)[0], punkt: strahl.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), -y), new THREE.Vector3()) };
-}
-
-// Alles, was auf einem Objekt steht, wird mitbewegt
-function mitStapel(o) {
-  const ids = new Set([o.id]);
-  let neu = true;
-  while (neu) {
-    neu = false;
-    for (const a of zustand.objekte) {
-      const t = ergebnis.lage.get(a.id)?.traeger;
-      if (t && ids.has(t.id) && !ids.has(a.id)) { ids.add(a.id); neu = true; }
-    }
-  }
-  return zustand.objekte.filter((a) => ids.has(a.id));
 }
 
 const RASTER = 0.05, MAGNET = 0.08;
@@ -463,34 +760,37 @@ function einrasten(o, bewegt) {
       kandZ.push([f.z1, fa.z0], [f.z0, fa.z1]);
     }
   }
-  const sprung = (kand, grenze) => kand.map(([ist, soll]) => soll - ist).filter((d) => Math.abs(d) < grenze).sort((a, b) => Math.abs(a) - Math.abs(b))[0] ?? 0;
-  o.x += sprung(kandX, MAGNET);
-  o.z += sprung(kandZ, MAGNET);
+  const sprung = (kand) => kand.map(([ist, soll]) => soll - ist).filter((d) => Math.abs(d) < MAGNET).sort((a, b) => Math.abs(a) - Math.abs(b))[0] ?? 0;
+  o.x += sprung(kandX);
+  o.z += sprung(kandZ);
   f = fussabdruck(o);
   o.x += Math.max(0, -L / 2 - f.x0) - Math.max(0, f.x1 - L / 2);
   o.z += Math.max(0, -B / 2 - f.z0) - Math.max(0, f.z1 - B / 2);
 }
 
-// Erfasst den Druck vor der Kamerasteuerung, damit Ziehen die Kamera nicht dreht
+// Erfasst den Druck vor der Kamerasteuerung, damit Ziehen die Ansicht nicht bewegt
 behaelter.addEventListener('pointerdown', (ev) => {
   if (ev.target !== renderer.domElement || !ev.isPrimary) return;
   druck = { x: ev.clientX, y: ev.clientY };
   const { treffer } = treffe(ev, fahrzeug().hoehe);
   if (!treffer) return;
   const ziel = treffer.object.userData.ziel;
-  steuerung.enabled = false;
+  steuerung().enabled = false;
   const wechsel = auswahl?.id !== ziel.id;
   auswahl = { ...ziel };
-  const yEbene = fahrzeug().hoehe + (ziel.art === 'objekt' ? ergebnis.lage.get(ziel.id).y : 0);
+  let gruppe = [], wurzel = null;
+  if (ziel.art === 'objekt') ({ gruppe, wurzel } = bewegGruppe(zustand.objekte, ergebnis.lage, objekt(ziel.id)));
+  const yEbene = fahrzeug().hoehe + (wurzel ? ergebnis.lage.get(wurzel.id).y : 0);
   const { punkt } = treffe(ev, yEbene);
-  const gruppe = ziel.art === 'objekt' ? mitStapel(objekt(ziel.id)) : [];
-  ziehen = { ziel, yEbene, start: punkt, positionen: new Map(gruppe.map((a) => [a.id, { x: a.x, z: a.z }])), gurtX: ziel.art === 'gurt' ? gurt(ziel.id).x : 0 };
+  ziehen = { ziel, wurzel, yEbene, start: punkt, bewegt: false, positionen: new Map(gruppe.map((a) => [a.id, { x: a.x, z: a.z }])), gurtX: ziel.art === 'gurt' ? gurt(ziel.id).x : 0 };
   renderer.domElement.setPointerCapture(ev.pointerId);
-  if (wechsel) aktualisiere(); else zeichne();
+  if (wechsel) aktualisiere();
 }, { capture: true });
 
 renderer.domElement.addEventListener('pointermove', (ev) => {
   if (!ziehen || !ziehen.start) return;
+  if (!ziehen.bewegt && Math.hypot(ev.clientX - druck.x, ev.clientY - druck.y) < 4) return; // Antippen nicht als Ziehen werten
+  ziehen.bewegt = true;
   const { punkt } = treffe(ev, ziehen.yEbene);
   if (!punkt) return;
   const dx = punkt.x - ziehen.start.x, dz = punkt.z - ziehen.start.z;
@@ -498,22 +798,21 @@ renderer.domElement.addEventListener('pointermove', (ev) => {
     const L = fahrzeug().laenge;
     gurt(ziehen.ziel.id).x = Math.min(Math.max(Math.round((ziehen.gurtX + dx) / RASTER) * RASTER, -L / 2), L / 2);
   } else {
-    const o = objekt(ziehen.ziel.id);
-    const s = ziehen.positionen.get(o.id);
-    o.x = s.x + dx; o.z = s.z + dz;
-    einrasten(o, new Set(ziehen.positionen.keys()));
-    const vx = o.x - s.x, vz = o.z - s.z;
-    for (const [id, p] of ziehen.positionen) if (id !== o.id) { const a = objekt(id); a.x = p.x + vx; a.z = p.z + vz; }
+    const w = ziehen.wurzel, s = ziehen.positionen.get(w.id);
+    w.x = s.x + dx; w.z = s.z + dz;
+    einrasten(w, new Set(ziehen.positionen.keys()));
+    const vx = w.x - s.x, vz = w.z - s.z;
+    for (const [id, p] of ziehen.positionen) if (id !== w.id) { const a = objekt(id); a.x = p.x + vx; a.z = p.z + vz; }
   }
   aktualisiereBald();
 });
 
 function zeigerHoch(ev) {
   if (ziehen) {
+    const bewegt = ziehen.bewegt;
     ziehen = null;
-    steuerung.enabled = true;
-    speichere();
-    aktualisiere();
+    steuerung().enabled = true;
+    if (bewegt) aendere();
   } else if (druck && Math.hypot(ev.clientX - druck.x, ev.clientY - druck.y) < 6 && auswahl) {
     auswahl = null; // Tippen ins Leere hebt die Auswahl auf
     aktualisiere();
@@ -523,37 +822,70 @@ function zeigerHoch(ev) {
 renderer.domElement.addEventListener('pointerup', zeigerHoch);
 renderer.domElement.addEventListener('pointercancel', zeigerHoch);
 
-// ---------- Bedienfeld ----------
-const optionen = (liste, wert = (e) => e.id) => liste.map((e) => `<option value="${wert(e)}">${esc(e.name)}</option>`).join('');
-$('fahrzeug').innerHTML = optionen(FAHRZEUGE);
-$('ladegut').innerHTML = optionen(LADEGUT, (e) => e.art);
-$('gurttyp').innerHTML = GURTTYPEN.map((t) => `<option value="${t.id}">${esc(t.name)} (S_TF ${t.stf} daN)</option>`).join('');
-$('gurttyp').value = 'langhebel';
-$('fahrzeug').value = fahrzeug().id;
+// ---------- Ansicht umschalten ----------
+function setzeAnsicht(neu, erstesMal = false) {
+  ansicht = neu;
+  try { localStorage.setItem('lasi3d-ansicht', neu); } catch { /* egal */ }
+  steuer3d.enabled = neu === '3d';
+  steuerOben.enabled = neu === 'oben';
+  sonne.castShadow = neu === '3d';
+  document.body.classList.toggle('oben', neu === 'oben');
+  mini.hidden = neu !== 'oben';
+  for (const b of document.querySelectorAll('[data-ansicht]')) b.classList.toggle('an', b.dataset.ansicht === neu);
+  // nach der Größenänderung der Ansicht neu einrichten
+  requestAnimationFrame(() => {
+    groesse();
+    if (neu === 'oben') {
+      const o = gewaehltesObjekt();
+      if (erstesMal) rahmeOben(); else if (o) setzeObenZiel(o.x);
+    }
+    aktualisiere();
+  });
+}
+document.querySelector('.ansicht').addEventListener('click', (ev) => {
+  const a = ev.target.closest('[data-ansicht]')?.dataset.ansicht;
+  if (a && a !== ansicht) setzeAnsicht(a);
+});
 
+// ---------- Bedienfeld ----------
+$('fahrzeug').innerHTML = FAHRZEUGE.map((f) => `<option value="${f.id}">${esc(f.name)}</option>`).join('');
+$('fahrzeug').value = fahrzeug().id;
 $('fahrzeug').addEventListener('change', () => { zustand.fahrzeugId = $('fahrzeug').value; speichere(); baueFahrzeug(); aktualisiere(); });
-$('ladegut-neu').addEventListener('click', () => neuesObjekt(LADEGUT.find((v) => v.art === $('ladegut').value)));
+$('ladegut-neu').addEventListener('click', oeffneKatalog);
 $('palette-neu').addEventListener('click', () => neuesObjekt(HILFSMITTEL.find((v) => v.art === 'europalette')));
 $('rhm-neu').addEventListener('click', () => neuesObjekt(HILFSMITTEL.find((v) => v.art === 'rhm')));
 $('gurt-neu').addEventListener('click', () => {
-  const sel = auswahl?.art === 'objekt' ? objekt(auswahl.id) : null;
-  neuerGurt(sel ? sel.x : 0);
+  const o = gewaehltesObjekt();
+  const ohneGurt = ergebnis.ergebnisse.find((e) => e.gurte.length === 0);
+  const e = o ? ergebnis.ergebnisse.find((x) => x.einheit.mitglieder.some((m) => m.id === o.id)) : ohneGurt;
+  neuerGurt(e ? freierGurtX(zustand.gurte, e.einheit.f) : ansicht === 'oben' ? steuerOben.target.x : 0);
 });
-$('beispiel').addEventListener('click', () => { zustand = { fahrzeugId: zustand.fahrzeugId, ...beispiel(zustand.fahrzeugId) }; auswahl = null; speichere(); aktualisiere(); });
+$('ergebnis').addEventListener('click', (ev) => {
+  const id = ev.target.closest('[data-waehle]')?.dataset.waehle;
+  if (!id) return;
+  auswahl = { art: 'objekt', id };
+  aktualisiere();
+  zeigeImBild(objekt(id).x);
+  behaelter.scrollIntoView({ behavior: 'smooth', block: 'start' });
+});
+$('beispiel').addEventListener('click', () => { zustand = { fahrzeugId: zustand.fahrzeugId, ...beispiel(zustand.fahrzeugId) }; auswahl = null; aendere(); });
 $('leeren').addEventListener('click', () => {
   if (!confirm('Alle Ladung, Hilfsmittel und Gurte entfernen?')) return;
-  zustand.objekte = []; zustand.gurte = []; auswahl = null; speichere(); aktualisiere();
+  zustand.objekte = []; zustand.gurte = []; auswahl = null; aendere();
 });
 
+groesse();
+ergebnis = pruefe({ ...zustand, flaeche: fahrzeug() });
 baueFahrzeug();
-aktualisiere();
+setzeAnsicht(ansicht, true);
+
 // für die Seitentests
 window.lasi = {
-  zustand: () => zustand, ergebnis: () => ergebnis, auswahl: () => auswahl,
+  zustand: () => zustand, ergebnis: () => ergebnis, auswahl: () => auswahl, ansicht: () => ansicht,
   // Bildschirmposition eines Punkts auf dem Objekt (Standard: Mitte der Oberseite)
-  bildschirm(id, dx = 0, anteilHoehe = 1) {
+  bildschirm(id, dx = 0, anteilHoehe = 1, dz = 0) {
     const o = objekt(id), r = renderer.domElement.getBoundingClientRect();
-    const v = new THREE.Vector3(o.x + dx, fahrzeug().hoehe + ergebnis.lage.get(id).y + o.h * anteilHoehe, o.z).project(kamera);
+    const v = new THREE.Vector3(o.x + dx, fahrzeug().hoehe + ergebnis.lage.get(id).y + o.h * anteilHoehe, o.z + dz).project(kamera());
     return { x: r.left + ((v.x + 1) / 2) * r.width, y: r.top + ((1 - v.y) / 2) * r.height };
   },
 };
