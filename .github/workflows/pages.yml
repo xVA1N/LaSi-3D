@@ -20,7 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
+      url: ${{ steps.versuch1.outputs.page_url || steps.versuch2.outputs.page_url }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -36,5 +36,13 @@ jobs:
       - uses: actions/upload-pages-artifact@v4
         with:
           path: dist
-      - id: deploy
+      # Veröffentlichen; bei einer kurzen Störung von GitHub einmal nach 30 Sekunden wiederholen
+      - id: versuch1
+        uses: actions/deploy-pages@v4
+        continue-on-error: true
+      - name: Kurz warten vor zweitem Versuch
+        if: steps.versuch1.outcome == 'failure'
+        run: sleep 30
+      - id: versuch2
+        if: steps.versuch1.outcome == 'failure'
         uses: actions/deploy-pages@v4
