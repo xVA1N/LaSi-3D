@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { pruefe, fussabdruck, fugenReibung, rechenkraftDaN, STIRNWAND_KRAFT_N, MU_RHM } from './modell.js';
+import { pruefe, fussabdruck, fugenReibung, rechenkraftDaN, kopfLage, STIRNWAND_KRAFT_N, MU_RHM } from './modell.js';
 import { FAHRZEUGE, LADEGUT, HILFSMITTEL, GURTTYPEN, MATERIALIEN, beispiel } from './daten.js';
 import { bewegGruppe, vereinigung, anWand, verschiebe, abstandVorne, unterlage, setzeUnterlage, freierGurtX } from './aktionen.js';
 
@@ -168,7 +168,16 @@ function baueObjekt(o, y, status, gewaehlt) {
   g.position.set(o.x, fahrzeug().hoehe + y, o.z);
   g.rotation.y = o.drehung === 90 ? Math.PI / 2 : 0;
   const { l, b, h } = o;
-  if (o.art === 'europalette') {
+  if (o.art === 'europalette' && o.hochkant) {
+    // liegende Palette (Länge quer) um die Längsachse aufgestellt: Dicke in x, Breite in z, Höhe in y
+    const holz = mat(FARBEN.europalette);
+    const p = new THREE.Group();
+    p.add(kasten(h, 0.022, b, holz, 0, 0.133, 0));
+    for (const x of [-h / 2 + 0.0725, 0, h / 2 - 0.0725]) { p.add(kasten(0.145, 0.1, b, holz, x, 0.072, 0)); p.add(kasten(0.1, 0.022, b, holz, x, 0.011, 0)); }
+    p.rotation.z = Math.PI / 2;
+    p.position.set(l / 2, h / 2, 0);
+    g.add(p);
+  } else if (o.art === 'europalette') {
     const holz = mat(FARBEN.europalette);
     g.add(kasten(l, 0.022, b, holz, 0, h - 0.011, 0));
     for (const z of [-b / 2 + 0.0725, 0, b / 2 - 0.0725]) { g.add(kasten(l, 0.1, 0.145, holz, 0, 0.072, z)); g.add(kasten(l, 0.022, 0.1, holz, 0, 0.011, z)); }
@@ -237,6 +246,26 @@ function baueGurt(g, info, gewaehlt) {
   if (liegt) { ratsche(v[0], v[1]); if (g.zweiRatschen) ratsche(v[3], v[2]); }
 }
 
+function baueKopf(g, info, gewaehlt) {
+  if (!info?.getroffen.length) return;
+  const { breite: B, hoehe: H } = fahrzeug();
+  const e = 0.014, aussen = info.richtung === 'rueckwaerts' ? -e : e;
+  const v = [[info.ankerX, 0, -B / 2], [info.x + aussen, info.y, info.z0 - e], [info.x + aussen, info.y, info.z1 + e], [info.ankerX, 0, B / 2]]
+    .map(([x, y, z]) => new THREE.Vector3(x, H + y, z));
+  const material = gewaehlt ? mat(0xffc400, { emissive: 0x664400 }) : mat(0xe8901a, { roughness: 0.5 });
+  for (let i = 0; i < v.length - 1; i++) {
+    const sichtbar = band(v[i], v[i + 1], material, 0.012, ansicht === 'oben' ? 0.07 : 0.05);
+    sichtbar.castShadow = true;
+    ladungGruppe.add(sichtbar);
+    const treffer = band(v[i], v[i + 1], unsichtbar, 0.2, 0.3);
+    treffer.userData.ziel = { art: 'gurt', id: g.id };
+    anklickbar.push(treffer);
+    ladungGruppe.add(treffer);
+  }
+  const r = v[0].clone().lerp(v[1], 0.4);
+  ladungGruppe.add(kasten(0.13, 0.09, 0.06, mat(0x8a949c, { metalness: 0.6, roughness: 0.4 }), r.x, r.y, r.z));
+}
+
 function zeichne() {
   leere(ladungGruppe);
   anklickbar = [];
@@ -246,7 +275,10 @@ function zeichne() {
     const gew = auswahl?.art === 'objekt' && auswahl.id === o.id;
     baueObjekt(o, ergebnis.lage.get(o.id).y, o.typ === 'ladung' ? status.get(o.id) : undefined, gew);
   }
-  for (const g of zustand.gurte) baueGurt(g, ergebnis.gurte.find((i) => i.id === g.id), auswahl?.art === 'gurt' && auswahl.id === g.id);
+  for (const g of zustand.gurte) {
+    const info = ergebnis.gurte.find((i) => i.id === g.id), gew = auswahl?.art === 'gurt' && auswahl.id === g.id;
+    if (g.art === 'kopf') baueKopf(g, info, gew); else baueGurt(g, info, gew);
+  }
   baueMarken();
   baueMini();
 }
@@ -362,6 +394,7 @@ renderer.setAnimationLoop(() => {
 // ---------- Rechnen und Anzeigen ----------
 let geplant = false;
 function aktualisiere() {
+  zustand.gurte = zustand.gurte.filter((g) => g.art !== 'kopf' || objekt(g.ziel));
   ergebnis = pruefe({ ...zustand, flaeche: fahrzeug() });
   if (auswahl && !(gewaehltesObjekt() || gewaehlterGurt())) auswahl = null;
   zeichne();
@@ -408,8 +441,14 @@ function objektStatus(o) {
   }
   return { ok: false, text: `✗ ${probleme.slice(0, 2).join(', ')}` };
 }
+const einheitVon = (o) => ergebnis.ergebnisse.find((x) => x.einheit.mitglieder.some((m) => m.id === o.id));
+const SEITE = { hinten: 'hinten', vorne: 'vorne' };
 function gurtStatus(g) {
   const info = ergebnis.gurte.find((i) => i.id === g.id);
+  if (g.art === 'kopf') {
+    if (!info?.getroffen.length) return { ok: false, text: '✗ ohne Ladung' };
+    return { ok: true, text: `α ≈ ${zahl(info.winkel, 0)}° · β ≈ ${zahl(info.beta, 0)}°${info.lastverteiler ? ' · um Palette als Lastverteiler' : ''}` };
+  }
   if (!info?.getroffen.length) return { ok: false, text: '✗ liegt auf keiner Ladung' };
   const gekappt = g.stf > g.lc / 2 ? ` · gerechnet mit ${rechenkraftDaN(g)} daN` : '';
   return { ok: true, text: `α ≈ ${zahl(info.winkel, 0)}° · über ${info.getroffen.length} Einheit${info.getroffen.length === 1 ? '' : 'en'}${gekappt}` };
@@ -429,7 +468,7 @@ function zeigeErgebnis() {
       if (d.formschluss) text = 'Formschluss';
       else if (d.brauch === 0) text = 'hält durch Reibung';
       else if (d.hat === 0) text = 'ungesichert';
-      else text = `${zahl(d.auslastung * 100, 0)} % ausgelastet`;
+      else text = `${d.methode === 'kopf' ? 'Kopfschlinge ' : ''}${zahl(d.auslastung * 100, 0)} % ausgelastet`;
       return `<tr><td>${RNAME[k]}</td><td class="${d.ok ? 'gut' : 'schlecht'}">${text}</td></tr>`;
     }).join('');
     const kq = e.kippen.seitlich, kl = e.kippen.laengs;
@@ -461,22 +500,24 @@ function zeigeLeiste() {
       + knopf('gurt', '⇵', 'Gurt +', o.typ === 'rhm' ? 'disabled' : '') + knopf('bearbeiten', '✎', 'Bearbeiten') + knopf('kopieren', '⧉', 'Kopieren') + knopf('loeschen', '🗑', 'Löschen', 'class="rot"');
   } else {
     status = gurtStatus(g);
-    $('leiste-titel').textContent = `Zurrgurt · ${zahl(g.stf, 0)} daN`;
+    $('leiste-titel').textContent = g.art === 'kopf' ? `Kopfschlinge ${SEITE[g.seite]} · LC ${zahl(g.lc, 0)} daN` : `Zurrgurt · ${zahl(g.stf, 0)} daN`;
     $('pad').classList.add('nur-laengs');
-    $('leiste-knoepfe').innerHTML = knopf('bearbeiten', '✎', 'Bearbeiten') + knopf('kopieren', '⧉', 'Kopieren') + knopf('loeschen', '🗑', 'Löschen', 'class="rot"');
+    $('leiste-knoepfe').innerHTML = knopf('bearbeiten', '✎', 'Bearbeiten') + (g.art === 'kopf' ? '' : knopf('kopieren', '⧉', 'Kopieren')) + knopf('loeschen', '🗑', 'Löschen', 'class="rot"');
   }
   $('leiste-status').textContent = status.text;
   $('leiste-status').className = status.ok ? 'gut' : 'schlecht';
 }
 
 const SCHRITT = 0.05;
+const kopfAbstand = (v) => Math.round(Math.min(Math.max(v, 0.2), 8) * 100) / 100;
 $('pad').addEventListener('click', (ev) => {
   const schub = ev.target.closest('[data-schub]')?.dataset.schub;
   if (!schub) return;
   const [quer, laengs] = schub.split(',').map(Number);
   const o = gewaehltesObjekt(), g = gewaehlterGurt();
   if (o) verschiebe(zustand.objekte, ergebnis.lage, o, laengs * SCHRITT, quer * SCHRITT, fahrzeug());
-  if (g) { const L = fahrzeug().laenge / 2; g.x = Math.round(Math.min(Math.max(g.x + laengs * SCHRITT, -L), L) * 1000) / 1000; }
+  if (g?.art === 'kopf') g.abstand = kopfAbstand(g.abstand + laengs * SCHRITT * (g.seite === 'vorne' ? -1 : 1));
+  else if (g) { const L = fahrzeug().laenge / 2; g.x = Math.round(Math.min(Math.max(g.x + laengs * SCHRITT, -L), L) * 1000) / 1000; }
   aendere();
 });
 
@@ -488,7 +529,7 @@ $('leiste-knoepfe').addEventListener('click', (ev) => {
 function fuehreAus(aktion) {
   const o = gewaehltesObjekt(), g = gewaehlterGurt();
   const L = fahrzeug().laenge;
-  if (aktion === 'bearbeiten') { if (o) oeffneObjektBlatt(); else oeffneGurtBlatt(); return; }
+  if (aktion === 'bearbeiten') { if (o) oeffneObjektBlatt(); else if (g.art === 'kopf') oeffneKopfBlatt(); else oeffneGurtBlatt(); return; }
   if (o) {
     const { wurzel, gruppe } = bewegGruppe(zustand.objekte, ergebnis.lage, o);
     if (aktion === 'anwand') anWand(zustand.objekte, ergebnis.lage, o, fahrzeug());
@@ -502,11 +543,7 @@ function fuehreAus(aktion) {
       ergebnis = pruefe({ ...zustand, flaeche: fahrzeug() });
       verschiebe(zustand.objekte, ergebnis.lage, o, 0, 0, fahrzeug());
     }
-    if (aktion === 'gurt') {
-      const e = ergebnis.ergebnisse.find((x) => x.einheit.mitglieder.some((m) => m.id === o.id));
-      neuerGurt(freierGurtX(zustand.gurte, e ? e.einheit.f : vereinigung(gruppe)));
-      return;
-    }
+    if (aktion === 'gurt') { oeffneGurtWahl(); return; }
     if (aktion === 'kopieren') {
       const neu = new Map(gruppe.map((a) => [a.id, { ...a, id: neueId('o') }]));
       const kopien = [...neu.values()];
@@ -527,6 +564,10 @@ function fuehreAus(aktion) {
         const nurHier = new Set(ergebnis.gurte.filter((i) => i.getroffen.length === 1 && i.getroffen[0] === e.id).map((i) => i.id));
         zustand.gurte = zustand.gurte.filter((x) => !nurHier.has(x.id));
       }
+      // Kopfschlingen an gelöschter Ladung: auf andere Ladung der Einheit umhängen, sonst entfernen
+      const rest = e?.einheit.mitglieder.find((m) => m.typ === 'ladung' && !weg.has(m.id));
+      for (const k of zustand.gurte) if (k.art === 'kopf' && weg.has(k.ziel) && rest) k.ziel = rest.id;
+      zustand.gurte = zustand.gurte.filter((k) => k.art !== 'kopf' || !weg.has(k.ziel));
       auswahl = null;
     }
   } else if (g) {
@@ -568,15 +609,22 @@ function oeffneObjektBlatt() {
   if (!o) return;
   const zyl = o.form === 'zylinder';
   const m = { schritt: 0.05, min: 0.05, max: 15, einheit: '', nk: 2 };
+  let lagePalette = '';
+  if (o.art === 'europalette') {
+    const jetzt = !o.hochkant ? 'liegend' : o.b > 1 ? 'hochkant12' : 'hochkant08';
+    const wahl = [['liegend', 'liegend'], ['hochkant12', 'hochkant, 1,2 m breit'], ['hochkant08', 'hochkant, 0,8 m breit']];
+    lagePalette = feld('Lage', `<div class="chips">${wahl.map(([k, t]) => `<button type="button" data-lage="${k}" class="${jetzt === k ? 'an' : ''}">${t}</button>`).join('')}</div>
+      <p class="werte">Hochkant dient sie als Lastverteiler für eine Kopfschlinge oder als Füllmittel vor der Stirnwand.</p>`);
+  }
   let masse = '';
   if (o.typ !== 'rhm') masse = feld('Masse', stepper('masse', o.masse, { schritt: o.masse >= 500 ? 50 : 10, min: 1, max: 40000, einheit: 'kg', nk: 0 }));
-  const masze = zyl
+  const masze = o.hochkant ? '' : zyl
     ? feld('Maße in m (Durchmesser · Höhe)', `<div class="drei" style="grid-template-columns:1fr 1fr">${stepper('durchmesser', o.l, m)}${stepper('h', o.h, m)}</div>`)
     : o.typ === 'rhm'
       ? feld('Maße in m (Länge · Breite)', `<div class="drei" style="grid-template-columns:1fr 1fr">${stepper('l', o.l, m)}${stepper('b', o.b, m)}</div>`)
       : feld('Maße in m (Länge · Breite · Höhe)', `<div class="drei">${stepper('l', o.l, m)}${stepper('b', o.b, m)}${stepper('h', o.h, { ...m, min: 0.02 })}</div>`);
   let stehtAuf = '';
-  if (o.typ !== 'rhm') {
+  if (o.typ !== 'rhm' && !o.hochkant) {
     const u = unterlage(zustand.objekte, ergebnis.lage, o);
     const wahl = o.typ === 'ladung'
       ? [['flaeche', 'Ladefläche'], ['palette', 'Palette'], ['matte', 'Antirutschmatte'], ['palette-matte', 'Palette + Matte']]
@@ -586,7 +634,7 @@ function oeffneObjektBlatt() {
     stehtAuf = feld(`Steht auf <span class="werte">· μ = ${zahl(fugenReibung(o, ergebnis.lage.get(o.id).traeger))}</span>`, `<div class="chips">${wahl.map(([k, t]) => `<button type="button" data-unterlage="${k}" class="${u.art === k ? 'an' : ''}" ${gesperrt ? 'disabled' : ''}>${t}</button>`).join('')}</div>${notiz}`);
   }
   let mehr = '';
-  if (o.typ !== 'rhm') {
+  if (o.typ !== 'rhm' && !o.hochkant) {
     const auto = fugenReibung({ ...o, mu: 0 }, ergebnis.lage.get(o.id).traeger);
     const material = o.typ === 'ladung'
       ? `<label>Material der Unterseite<select data-feld="material">${Object.entries(MATERIALIEN).map(([k, n]) => `<option value="${k}" ${k === o.material ? 'selected' : ''}>${n}</option>`).join('')}</select></label>`
@@ -595,7 +643,7 @@ function oeffneObjektBlatt() {
       ${feld('Reibbeiwert μ der Fuge darunter', `${stepper('mu', o.mu || auto, { schritt: 0.05, min: 0.05, max: 1, nk: 2 })}<div class="chips" style="margin-top:6px"><button type="button" data-mu-auto class="${o.mu ? '' : 'an'}">automatisch (${zahl(auto)})</button></div>`)}
       </div></details>`;
   }
-  oeffneBlatt(`<h3 id="blatt-titel">${esc(o.name)}</h3><div class="lage" id="blatt-lage"></div>${masse}${masze}${stehtAuf}${mehr}${fuss()}`);
+  oeffneBlatt(`<h3 id="blatt-titel">${esc(o.name)}</h3><div class="lage" id="blatt-lage"></div>${masse}${lagePalette}${masze}${stehtAuf}${mehr}${fuss()}`);
 }
 
 function oeffneGurtBlatt() {
@@ -611,6 +659,56 @@ function oeffneGurtBlatt() {
     </div>
     ${feld('Ratschen', `<div class="chips"><button type="button" data-ratschen="1" class="${g.zweiRatschen ? '' : 'an'}">eine Seite (k = 1,5)</button><button type="button" data-ratschen="2" class="${g.zweiRatschen ? 'an' : ''}">beide Seiten (k = 2)</button></div>`)}
     ${fuss()}`);
+}
+
+function oeffneKopfBlatt() {
+  const g = gewaehlterGurt();
+  if (!g) return;
+  oeffneBlatt(`<h3 id="blatt-titel">Kopfschlinge</h3><div class="lage" id="blatt-lage"></div>
+    ${feld('Seite der Ladung', `<div class="chips"><button type="button" data-seite="hinten" class="${g.seite === 'hinten' ? 'an' : ''}">hinten (hält nach hinten)</button><button type="button" data-seite="vorne" class="${g.seite === 'vorne' ? 'an' : ''}">vorne (hält nach vorne)</button></div>`)}
+    <div class="drei" style="grid-template-columns:1fr 1fr">
+      ${feld('Zurrkraft LC', stepper('lc', g.lc, { schritt: 500, min: 500, max: 10000, einheit: 'daN', nk: 0 }))}
+      ${feld('Zurrpunkte entfernt', stepper('zurrabstand', g.abstand, { schritt: 0.05, min: 0.2, max: 8, einheit: 'm', nk: 2 }))}
+    </div>
+    <p class="werte">Gerechnet als Direktzurren: je Schenkel LC · (cos α · cos β + 0,75 · μ · sin α). Je weiter die Zurrpunkte entfernt sind, desto flacher und wirksamer zieht die Schlinge.</p>
+    ${fuss()}`);
+}
+
+let verteilerAn = true;
+function oeffneGurtWahl() {
+  const o = gewaehltesObjekt();
+  const e = o && o.typ === 'ladung' ? einheitVon(o) : null;
+  const k = (art, titel, text) => `<button type="button" data-neu="${art}" ${art !== 'nieder' && !e ? 'disabled' : ''}><span>${titel}<small>${text}</small></span></button>`;
+  oeffneBlatt(`<h3 id="blatt-titel">Gurt hinzufügen</h3>
+    <div class="katalog" style="grid-template-columns:1fr">
+      ${k('nieder', 'Niederzurren', 'quer über die Ladung, drückt sie auf die Fläche')}
+      ${k('kopf-hinten', 'Kopfschlinge hinten', 'Schlinge um die Rückseite, hält gegen Rutschen nach hinten')}
+      ${k('kopf-vorne', 'Kopfschlinge vorne', 'Schlinge um die Vorderseite, hält gegen Rutschen nach vorne')}
+    </div>
+    ${e ? `<div class="chips"><button type="button" data-verteiler class="${verteilerAn ? 'an' : ''}">Palette hochkant als Lastverteiler dazustellen</button></div>` : '<p class="werte">Für eine Kopfschlinge zuerst Ladegut antippen.</p>'}
+    <div style="height:12px"></div>${fuss(false)}`);
+}
+
+function neueKopfschlinge(o, seite) {
+  const e = einheitVon(o);
+  if (!e) return;
+  if (verteilerAn) {
+    const k = kopfLage({ seite, abstand: 1 }, e.einheit, zustand.objekte.filter((p) => p.typ === 'palette' && p.hochkant), fahrzeug());
+    if (!k.lastverteiler) {
+      const { f } = e.einheit;
+      const breit = f.z1 - f.z0 >= 0.95 ? 1.2 : 0.8;
+      zustand.objekte.push({
+        ...HILFSMITTEL.find((v) => v.art === 'europalette'), id: neueId('o'), mu: 0, drehung: 0, hochkant: true,
+        l: 0.144, b: breit, h: breit > 1 ? 0.8 : 1.2,
+        x: seite === 'hinten' ? f.x0 - 0.072 : f.x1 + 0.072,
+        z: Math.min(Math.max((f.z0 + f.z1) / 2, -fahrzeug().breite / 2 + breit / 2), fahrzeug().breite / 2 - breit / 2), // nicht über den Rand
+      });
+    }
+  }
+  const g = { id: neueId('g'), art: 'kopf', ziel: o.id, seite, abstand: 1.0, lc: 2500, stf: 500 };
+  zustand.gurte.push(g);
+  auswahl = { art: 'gurt', id: g.id };
+  aendere();
 }
 
 function blattLage() {
@@ -630,7 +728,9 @@ function setzeWert(name, v) {
     if (name === 'durchmesser') { o.l = o.b = v; } else if (name === 'material') o.material = v; else o[name] = v;
     if (name === 'mu') { const c = blattInhalt.querySelector('[data-mu-auto]'); c?.classList.remove('an'); }
   } else if (g) {
-    if (name === 'abstand') g.x = Math.round((fahrzeug().laenge / 2 - v) * 1000) / 1000; else g[name] = v;
+    if (name === 'abstand') g.x = Math.round((fahrzeug().laenge / 2 - v) * 1000) / 1000;
+    else if (name === 'zurrabstand') g.abstand = kopfAbstand(v);
+    else g[name] = v;
     if (name === 'stf') { for (const r of blattInhalt.querySelectorAll('[data-range="stf"]')) r.value = v; for (const i of blattInhalt.querySelectorAll('[data-feld="stf"] input')) if (+i.value !== v) i.value = v; }
     if (name === 'stf' || name === 'lc') for (const c of blattInhalt.querySelectorAll('[data-gurttyp]')) { const t = GURTTYPEN.find((x) => x.id === c.dataset.gurttyp); c.classList.toggle('an', t.stf === g.stf && t.lc === g.lc); }
   }
@@ -668,6 +768,25 @@ blattInhalt.addEventListener('click', (ev) => {
     g.zweiRatschen = el.dataset.ratschen === '2';
     aendere();
     oeffneGurtBlatt();
+  } else if (el.dataset.lage && o) {
+    const maße = { liegend: [1.2, 0.8, 0.144, false], hochkant12: [0.144, 1.2, 0.8, true], hochkant08: [0.144, 0.8, 1.2, true] }[el.dataset.lage];
+    [o.l, o.b, o.h, o.hochkant] = maße;
+    aendere();
+    oeffneObjektBlatt();
+  } else if (el.dataset.seite && g) {
+    g.seite = el.dataset.seite;
+    aendere();
+    oeffneKopfBlatt();
+  } else if (el.hasAttribute('data-verteiler')) {
+    verteilerAn = !verteilerAn;
+    el.classList.toggle('an', verteilerAn);
+  } else if (el.dataset.neu) {
+    const art = el.dataset.neu, sel = gewaehltesObjekt();
+    schliesseBlatt();
+    if (art === 'nieder') {
+      const e = sel ? einheitVon(sel) : ergebnis.ergebnisse.find((x) => x.gurte.length === 0);
+      neuerGurt(e ? freierGurtX(zustand.gurte, e.einheit.f) : ansicht === 'oben' ? steuerOben.target.x : 0);
+    } else neueKopfschlinge(sel, art === 'kopf-hinten' ? 'hinten' : 'vorne');
   } else if (el.dataset.ladegut) {
     schliesseBlatt();
     neuesObjekt(LADEGUT.find((v) => v.art === el.dataset.ladegut));
@@ -782,7 +901,7 @@ behaelter.addEventListener('pointerdown', (ev) => {
   if (ziel.art === 'objekt') ({ gruppe, wurzel } = bewegGruppe(zustand.objekte, ergebnis.lage, objekt(ziel.id)));
   const yEbene = fahrzeug().hoehe + (wurzel ? ergebnis.lage.get(wurzel.id).y : 0);
   const { punkt } = treffe(ev, yEbene);
-  ziehen = { ziel, wurzel, yEbene, start: punkt, bewegt: false, positionen: new Map(gruppe.map((a) => [a.id, { x: a.x, z: a.z }])), gurtX: ziel.art === 'gurt' ? gurt(ziel.id).x : 0 };
+  ziehen = { ziel, wurzel, yEbene, start: punkt, bewegt: false, positionen: new Map(gruppe.map((a) => [a.id, { x: a.x, z: a.z }])), gurtX: ziel.art === 'gurt' ? (gurt(ziel.id).art === 'kopf' ? gurt(ziel.id).abstand : gurt(ziel.id).x) : 0 };
   renderer.domElement.setPointerCapture(ev.pointerId);
   if (wechsel) aktualisiere();
 }, { capture: true });
@@ -794,7 +913,10 @@ renderer.domElement.addEventListener('pointermove', (ev) => {
   const { punkt } = treffe(ev, ziehen.yEbene);
   if (!punkt) return;
   const dx = punkt.x - ziehen.start.x, dz = punkt.z - ziehen.start.z;
-  if (ziehen.ziel.art === 'gurt') {
+  if (ziehen.ziel.art === 'gurt' && gurt(ziehen.ziel.id).art === 'kopf') {
+    const g = gurt(ziehen.ziel.id);
+    g.abstand = kopfAbstand(Math.round((ziehen.gurtX + dx * (g.seite === 'vorne' ? -1 : 1)) / RASTER) * RASTER);
+  } else if (ziehen.ziel.art === 'gurt') {
     const L = fahrzeug().laenge;
     gurt(ziehen.ziel.id).x = Math.min(Math.max(Math.round((ziehen.gurtX + dx) / RASTER) * RASTER, -L / 2), L / 2);
   } else {
@@ -854,12 +976,7 @@ $('fahrzeug').addEventListener('change', () => { zustand.fahrzeugId = $('fahrzeu
 $('ladegut-neu').addEventListener('click', oeffneKatalog);
 $('palette-neu').addEventListener('click', () => neuesObjekt(HILFSMITTEL.find((v) => v.art === 'europalette')));
 $('rhm-neu').addEventListener('click', () => neuesObjekt(HILFSMITTEL.find((v) => v.art === 'rhm')));
-$('gurt-neu').addEventListener('click', () => {
-  const o = gewaehltesObjekt();
-  const ohneGurt = ergebnis.ergebnisse.find((e) => e.gurte.length === 0);
-  const e = o ? ergebnis.ergebnisse.find((x) => x.einheit.mitglieder.some((m) => m.id === o.id)) : ohneGurt;
-  neuerGurt(e ? freierGurtX(zustand.gurte, e.einheit.f) : ansicht === 'oben' ? steuerOben.target.x : 0);
-});
+$('gurt-neu').addEventListener('click', oeffneGurtWahl);
 $('ergebnis').addEventListener('click', (ev) => {
   const id = ev.target.closest('[data-waehle]')?.dataset.waehle;
   if (!id) return;

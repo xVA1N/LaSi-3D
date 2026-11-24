@@ -9,6 +9,8 @@ Ladungssicherung am Lkw in 3D: Beispiele durchgehen, Zurrarten vergleichen und d
 - **Ladegut aus dem Katalog:** Holzkiste, Gitterbox, IBC, Fass, Papierrolle, Kunststoffkisten, Mauersteine; neues Ladegut kommt an die nächste freie Stelle
 - **Leiste am ausgewählten Teil:** Pfeile (5 cm), „An Wand“ (bis Stirnwand oder Ladung davor), Drehen, Gurt +, Bearbeiten, Kopieren, Löschen; Status und Abstand nach vorne direkt sichtbar. Ziehen verschiebt, rastet an Stirnwand, Bordwand und Nachbarn ein
 - **Fenster zum Bearbeiten:** Masse und Maße mit Plus/Minus, „Steht auf“ Ladefläche, Palette, Antirutschmatte oder beides (legt die Unterlage automatisch darunter), unter „Mehr“ Material und Reibbeiwert
+- **Kopfschlinge (Direktzurren):** über „Gurt +“ hinten oder vorne um die Ladung; auf Wunsch wird eine Palette hochkant als Lastverteiler dazugestellt. Einstellbar: LC und Abstand der Zurrpunkte. Gerechnet je Schenkel mit LC · (cos α · cos β + 0,75 · μ · sin α); Niederzurren und Kopfschlinge werden nicht addiert, es zählt das günstigere
+- **Paletten hochkant:** im Fenster „Lage“ liegend oder hochkant (1,2 oder 0,8 m breit); hochkant zwischen Ladung und Stirnwand zählt sie als Füllmittel für den Formschluss
 - **Zurrgurte (Niederzurren):** frei setzen und verschieben; im Fenster Vorspannkraft S_TF (Plus/Minus oder Schieberegler), Gurttyp, LC, Abstand zur Stirnwand und Ratsche auf einer oder beiden Seiten (k = 1,5 / 2)
 - **Prüfung je Ladeeinheit:** vorwärts, rückwärts, seitlich (Auslastung in %), Formschluss an der Stirnwand (auch über davorstehende Ladung) mit Last auf die Stirnwand, Kippen quer und längs; Hinweise bei Überschneidung, Überstand, Gurt ohne Ladung und S_TF über 0,5 · LC. Gesicherte Ladung hat einen grünen, ungesicherte einen roten Umriss
 - **Beispiele** je Fahrzeug; die Beladung bleibt im Browser gespeichert
@@ -42,7 +44,7 @@ npm run build && (npm run preview -- --port 4173 &) && npm run e2e   # Seitentes
 
 ## Nächste Schritte
 
-- Direktzurren (Diagonal-, Schräg- und Kopfschlingen) mit LC und Zurrwinkeln α/β, Gurte frei zwischen Zurrpunkten spannen
+- Weiteres Direktzurren (Diagonal- und Schrägzurren), Gurte frei zwischen Zurrpunkten spannen
 - Formschluss nach hinten und zur Seite (Rungen, Bordwände, Füllmittel wie Luftkissen oder Leerpaletten)
 - Liegende Rollen mit Keilen, Coils, Fahrzeuge
 - Gurtschoner/Kantenschutz, Zwischenwandverschluss, Sperrbalken

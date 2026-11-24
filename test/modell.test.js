@@ -93,3 +93,49 @@ test('Mitgelieferte Beispiele sind korrekt gesichert', async () => {
     assert.deepEqual({ fahrzeug: f.id, fehler, hinweise: r.hinweise }, { fahrzeug: f.id, fehler: [], hinweise: [] });
   }
 });
+
+const hochkant = (id, x, z = 0, b = 1.2) => ({ id, typ: 'palette', art: 'europalette', name: id, material: 'holz', masse: 25, l: 0.144, b, h: b === 1.2 ? 0.8 : 1.2, x, z, drehung: 0, hochkant: true });
+const kopf = (id, ziel, seite = 'hinten', mehr = {}) => ({ id, art: 'kopf', ziel, seite, abstand: 1.0, lc: 2500, stf: 500, ...mehr });
+
+test('Kopfschlinge hinten sichert rückwärts (Direktzurren, μ · 0,75)', () => {
+  const k = kiste('k', 0, 0, { b: 1.0 });
+  const ohne = pruefe({ objekte: [k], flaeche, gurte: [] });
+  assert.equal(ohne.ergebnisse[0].richtungen.rueckwaerts.ok, false);
+  const r = pruefe({ objekte: [k], flaeche, gurte: [kopf('s', 'k')] });
+  const d = r.ergebnisse[0].richtungen.rueckwaerts;
+  assert.equal(d.ok, true);
+  assert.equal(d.methode, 'kopf');
+  // Bedarf: (0,5 − 0,45 · 0,75) · 1200 · 9,81 = 1912,95 N
+  assert.ok(Math.abs(d.brauch - 1912.95) < 0.01);
+  // Geometrie: Schlinge auf 0,5 m Höhe, Ecken bei z = ±0,5, Anker 1 m davor am Rand (z = ±1,24)
+  const horizontal = Math.hypot(1, 0.74), a = Math.atan2(0.5, horizontal), b = Math.atan2(0.74, 1);
+  const erwartet = 2 * 25000 * (Math.cos(a) * Math.cos(b) + 0.45 * 0.75 * Math.sin(a));
+  assert.ok(Math.abs(d.hat - erwartet) < 0.01);
+  assert.equal(r.ergebnisse[0].richtungen.vorwaerts.ok, false); // hinten hält nicht nach vorne
+});
+
+test('Kopfschlinge legt sich um eine hochkant davorstehende Palette', () => {
+  const k = kiste('k', 0, 0, { b: 1.0 });
+  const p = hochkant('p', -0.6 - 0.072);
+  const r = pruefe({ objekte: [k, p], flaeche, gurte: [kopf('s', 'k')] });
+  const info = r.gurte[0];
+  assert.equal(info.lastverteiler.id, 'p');
+  assert.ok(Math.abs(info.x - (-0.744)) < 1e-9);
+  assert.ok(Math.abs(info.z1 - 0.6) < 1e-9); // Palette ist 1,2 m breit
+  assert.equal(r.ergebnisse.length, 1); // Palette ist keine eigene Ladeeinheit
+});
+
+test('Hochkant-Palette zwischen Stirnwand und Ladung gilt als Füllmittel', () => {
+  const p = hochkant('p', 6.8 - 0.072);
+  const k = kiste('k', 6.8 - 0.144 - 0.6, 0, { b: 1.0 });
+  const r = pruefe({ objekte: [p, k], flaeche, gurte: [] });
+  assert.equal(r.ergebnisse[0].richtungen.vorwaerts.formschluss, true);
+  // auf einer Hochkant-Palette kann nichts stehen
+  const lage = stapeln([p, { ...k, x: p.x }]);
+  assert.equal(lage.get('k').traeger, null);
+});
+
+test('Kopfschlinge ohne Ladung wird gemeldet', () => {
+  const r = pruefe({ objekte: [], flaeche, gurte: [kopf('s', 'weg')] });
+  assert.ok(r.hinweise.some((h) => h.id === 's'));
+});
