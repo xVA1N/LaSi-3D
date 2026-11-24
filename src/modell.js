@@ -54,7 +54,7 @@ export function stapeln(objekte) {
     if (o.typ !== 'rhm') {
       for (const s of platziert) {
         const top = lage.get(s.id).y + s.h;
-        if (enthaelt(fussabdruck(s), o.x, o.z) && top > y - 1e-9) { y = top; traeger = s; }
+        if (!s.hochkant && enthaelt(fussabdruck(s), o.x, o.z) && top > y - 1e-9) { y = top; traeger = s; }
       }
     }
     lage.set(o.id, { y, traeger });
@@ -107,6 +107,51 @@ export function gurtLage(gurt, einheiten, flaecheBreite) {
   return { getroffen, sinAlpha, winkel: (Math.asin(Math.min(sinAlpha, 1)) * 180) / Math.PI, hoehe: h, z0, z1 };
 }
 
+// Direktzurren: Reibbeiwert wird mit f_μ = 0,75 abgemindert (EN 12195-1)
+export const F_MU_DIREKT = 0.75;
+const istKopf = (g) => g.art === 'kopf';
+
+/**
+ * Kopfschlinge um die Stirnfläche einer Ladeeinheit (Direktzurren in Längsrichtung).
+ * Hochkant stehende Paletten direkt an der Fläche dienen als Lastverteiler; die Schlinge liegt dann um sie.
+ * Die beiden Schenkel laufen zu Zurrpunkten am Außenrahmen im Abstand `abstand` von der Fläche.
+ */
+export function kopfLage(g, einheit, verteiler, flaeche) {
+  const L = flaeche.laenge / 2, B = flaeche.breite / 2;
+  const hinten = g.seite !== 'vorne';
+  let x = hinten ? einheit.f.x0 : einheit.f.x1;
+  let z0 = einheit.f.z0, z1 = einheit.f.z1, hoeheFlaeche = einheit.hoehe;
+  let lastverteiler = null;
+  for (const v of verteiler) {
+    const fv = fussabdruck(v);
+    const anliegend = hinten ? Math.abs(fv.x1 - x) <= 0.03 : Math.abs(fv.x0 - x) <= 0.03;
+    if (anliegend && fv.z0 < z1 && z0 < fv.z1) {
+      lastverteiler = v;
+      x = hinten ? fv.x0 : fv.x1;
+      z0 = Math.min(z0, fv.z0); z1 = Math.max(z1, fv.z1);
+      hoeheFlaeche = Math.min(hoeheFlaeche, v.h);
+      break;
+    }
+  }
+  const y = hoeheFlaeche / 2; // Schlinge etwa auf halber Höhe der Fläche
+  const ankerX = Math.min(Math.max(hinten ? x + g.abstand : x - g.abstand, -L), L);
+  const dx = Math.max(Math.abs(ankerX - x), 0.01);
+  const schenkel = [[z0, -B], [z1, B]].map(([zEcke, zAnker]) => {
+    const dz = Math.abs(zAnker - zEcke);
+    const horizontal = Math.hypot(dx, dz);
+    return { alpha: Math.atan2(y, horizontal), beta: Math.atan2(dz, dx) };
+  });
+  // Wirkung je Schenkel in Längsrichtung: LC · (cos α · cos β + μ_D · sin α)
+  const faktor = (mu) => schenkel.reduce((s, k) => s + Math.cos(k.alpha) * Math.cos(k.beta) + mu * F_MU_DIREKT * Math.sin(k.alpha), 0);
+  const grad = (r) => (r * 180) / Math.PI;
+  return {
+    x, y, z0, z1, ankerX, lastverteiler, faktor,
+    richtung: hinten ? 'rueckwaerts' : 'vorwaerts',
+    winkel: grad((schenkel[0].alpha + schenkel[1].alpha) / 2),
+    beta: grad((schenkel[0].beta + schenkel[1].beta) / 2),
+  };
+}
+
 /** Vorspannkraft, mit der gerechnet wird: höchstens 0,5 · LC */
 export const rechenkraftDaN = (gurt) => Math.min(gurt.stf, gurt.lc / 2);
 
@@ -119,9 +164,24 @@ export function pruefe({ objekte, gurte, flaeche }) {
   const B = flaeche.breite, L = flaeche.laenge;
   const hinweise = [];
 
+  // hochkant stehende Paletten: Lastverteiler für Kopfschlingen und Füllmittel für den Formschluss
+  const verteiler = objekte.filter((o) => o.typ === 'palette' && o.hochkant);
+
   // Beitrag jedes Gurts zu jeder Einheit
-  const beitrag = new Map(einheiten.map((e) => [e.id, { reib: 0, kipp: 0, gurte: [] }]));
+  const beitrag = new Map(einheiten.map((e) => [e.id, { reib: 0, kipp: 0, gurte: [], kopf: { vorwaerts: 0, rueckwaerts: 0 } }]));
   const gurtInfo = gurte.map((g) => {
+    if (istKopf(g)) {
+      const e = einheiten.find((x) => x.mitglieder.some((m) => m.id === g.ziel));
+      if (!e) {
+        hinweise.push({ art: 'gurt', id: g.id, text: 'Kopfschlinge ohne Ladung.' });
+        return { id: g.id, art: 'kopf', getroffen: [], winkel: 0 };
+      }
+      const k = kopfLage(g, e, verteiler, flaeche);
+      const b = beitrag.get(e.id);
+      b.kopf[k.richtung] += g.lc * 10 * k.faktor(e.mu);
+      b.gurte.push(g.id);
+      return { id: g.id, art: 'kopf', getroffen: [e.id], ...k, faktor: undefined };
+    }
     const gl = gurtLage(g, einheiten, B);
     const ft = rechenkraftDaN(g) * 10; // N
     const k = g.zweiRatschen ? K_FAKTOR.zweiSpannelemente : K_FAKTOR.einSpannelement;
@@ -137,15 +197,17 @@ export function pruefe({ objekte, gurte, flaeche }) {
     return { id: g.id, winkel: gl.winkel, getroffen: gl.getroffen.map((e) => e.id), hoehe: gl.hoehe ?? 0, z0: gl.z0, z1: gl.z1 };
   });
 
-  // Formschluss nach vorne: an der Stirnwand oder an einer Einheit, die selbst formschlüssig steht
+  // Formschluss nach vorne: an der Stirnwand oder an etwas, das selbst formschlüssig steht
+  // (andere Einheit oder hochkant stehende Palette als Füllmittel)
   const vorne = new Set();
+  const glieder = [...einheiten.map((e) => ({ id: e.id, f: e.f })), ...verteiler.map((v) => ({ id: v.id, f: fussabdruck(v) }))];
   let geaendert = true;
   while (geaendert) {
     geaendert = false;
-    for (const e of einheiten) {
+    for (const e of glieder) {
       if (vorne.has(e.id)) continue;
       const anWand = L / 2 - e.f.x1 <= ABSTAND_FORMSCHLUSS;
-      const anNachbar = einheiten.some((n) => vorne.has(n.id) && n.f.x0 - e.f.x1 >= -0.01 && n.f.x0 - e.f.x1 <= ABSTAND_FORMSCHLUSS && e.f.z0 < n.f.z1 && n.f.z0 < e.f.z1);
+      const anNachbar = glieder.some((n) => vorne.has(n.id) && n.f.x0 - e.f.x1 >= -0.01 && n.f.x0 - e.f.x1 <= ABSTAND_FORMSCHLUSS && e.f.z0 < n.f.z1 && n.f.z0 < e.f.z1);
       if (anWand || anNachbar) { vorne.add(e.id); geaendert = true; }
     }
   }
@@ -159,7 +221,16 @@ export function pruefe({ objekte, gurte, flaeche }) {
       const brauch = Math.max(0, (c - e.mu * cz) * e.masse * G * SICHERHEIT_NIEDERZURREN[r]);
       const formschluss = r === 'vorwaerts' && vorne.has(e.id);
       if (formschluss) stirnwandLast += Math.max(0, (c - e.mu * cz) * e.masse * G);
-      richtungen[r] = { brauch, hat: b.reib, formschluss, ok: formschluss || brauch <= b.reib + 1e-6, auslastung: brauch === 0 ? 0 : b.reib > 0 ? brauch / b.reib : Infinity };
+      const d = { brauch, hat: b.reib, formschluss, methode: 'nieder', ok: formschluss || brauch <= b.reib + 1e-6, auslastung: brauch === 0 ? 0 : b.reib > 0 ? brauch / b.reib : Infinity };
+      // Kopfschlinge (Direktzurren): μ mit f_μ abgemindert, gerechnet mit LC.
+      // Die Verfahren werden nicht addiert; es zählt das günstigere.
+      const kopf = b.kopf[r] ?? 0;
+      if (kopf > 0 && !formschluss && brauch > 0) {
+        const brauchDirekt = Math.max(0, (c - e.mu * F_MU_DIREKT * cz) * e.masse * G);
+        const k = brauchDirekt / kopf;
+        if (k < d.auslastung) Object.assign(d, { methode: 'kopf', brauch: brauchDirekt, hat: kopf, auslastung: k, ok: d.ok || k <= 1 });
+      }
+      richtungen[r] = d;
     }
     // Kippen quer: Gurte halten über die Breite; längs halten Quergurte nicht
     const w = e.basis.lz, l = e.basis.lx;
@@ -167,7 +238,10 @@ export function pruefe({ objekte, gurte, flaeche }) {
     // nach vorne hält der Formschluss auch gegen Kippen
     const kippen = {
       seitlich: { ok: kippBrauch <= b.kipp + 1e-6, brauch: Math.max(0, kippBrauch), hat: b.kipp },
-      laengs: { ok: (vorne.has(e.id) || BEIWERTE_STRASSE.vorwaerts.c * e.schwerpunkt <= l / 2) && BEIWERTE_STRASSE.rueckwaerts.c * e.schwerpunkt <= l / 2 },
+      laengs: {
+        ok: (vorne.has(e.id) || b.kopf.vorwaerts > 0 || BEIWERTE_STRASSE.vorwaerts.c * e.schwerpunkt <= l / 2)
+          && (b.kopf.rueckwaerts > 0 || BEIWERTE_STRASSE.rueckwaerts.c * e.schwerpunkt <= l / 2),
+      },
     };
     const ok = RICHTUNGEN.every((r) => richtungen[r].ok) && kippen.seitlich.ok && kippen.laengs.ok;
     return { id: e.id, einheit: e, richtungen, kippen, gurte: b.gurte, ok };

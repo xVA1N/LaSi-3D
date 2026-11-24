@@ -50,8 +50,8 @@ await seite.click('[data-aktion="anwand"]'); await kurz();
 pruefe(Math.abs((await objektById(kiste)).x - vorher.x) < 1e-6, '„An Wand“ schiebt bis an die Ladung davor');
 
 // Gurt + und Vorspannkraft im Fenster
-await seite.click('[data-aktion="gurt"]'); await kurz();
-pruefe((await status()).includes('✓'), 'Mit „Gurt +“ (S_TF 500 daN) gesichert');
+await seite.click('[data-aktion="gurt"]'); await seite.click('[data-neu="nieder"]'); await kurz();
+pruefe((await status()).includes('✓'), 'Mit „Gurt +“ → Niederzurren (S_TF 500 daN) gesichert');
 await seite.click('[data-aktion="bearbeiten"]'); await kurz();
 pruefe(await seite.isVisible('[data-feld="stf"]'), 'Fenster für den Gurt offen');
 await seite.fill('[data-feld="stf"] input', '50'); await seite.waitForTimeout(250);
@@ -83,12 +83,42 @@ pruefe(await seite.isVisible('[data-unterlage="palette-matte"].an'), 'Auswahl �
 await seite.click('[data-feld="masse"] [data-d="1"]'); await kurz();
 pruefe((await objektById(kiste)).masse === 850, 'Plus-Knopf erhöht die Masse');
 await seite.click('[data-blatt="fertig"]');
-await seite.click('[data-aktion="gurt"]'); await kurz(); // frischer Gurt über der Kiste
+await seite.click('[data-aktion="gurt"]'); await seite.click('[data-neu="nieder"]'); await kurz(); // frischer Gurt über der Kiste
 const gurteVorher = (await lage()).gurte.length;
 await seite.evaluate((id) => document.querySelector('[data-waehle="' + id + '"]')?.click(), kiste); await kurz();
 await seite.click('[data-aktion="loeschen"]'); await kurz();
 pruefe((await lage()).objekte.length === z.objekte.length - 3, 'Löschen entfernt die Kiste mit ihrer Palette und Matte');
 pruefe((await lage()).gurte.length === gurteVorher - 1, 'Löschen entfernt auch den Gurt, der nur über der Kiste lag');
+
+// Kopfschlinge mit hochkant gestellter Palette
+await seite.click('#ladegut-neu'); await seite.click('[data-ladegut="ibc"]'); await kurz();
+const ibc = await seite.evaluate(() => window.lasi.auswahl().id);
+pruefe((await seite.textContent('#leiste-status')).includes('rückwärts'), 'IBC allein ist nach hinten ungesichert');
+const anzahl = (await lage()).objekte.length;
+await seite.click('[data-aktion="gurt"]'); await seite.click('[data-neu="kopf-hinten"]'); await kurz();
+const nachKopf = await lage();
+const stehend = nachKopf.objekte.filter((o) => o.hochkant);
+pruefe(nachKopf.objekte.length === anzahl + 1 && stehend.length === 1, 'Kopfschlinge stellt eine Palette hochkant hinter die Ladung');
+pruefe(nachKopf.gurte.some((g) => g.art === 'kopf' && g.ziel === ibc), 'Kopfschlinge hängt an der Ladung');
+pruefe((await seite.textContent('#leiste-status')).includes('Lastverteiler'), 'Schlinge liegt um die Palette');
+const karte = await seite.textContent(`[data-waehle="${ibc}"]`);
+pruefe(karte.includes('Kopfschlinge'), 'Prüfung nennt die Kopfschlinge für rückwärts');
+await seite.click('[data-aktion="bearbeiten"]');
+await seite.click('[data-feld="zurrabstand"] [data-d="1"]'); await kurz();
+pruefe((await lage()).gurte.find((g) => g.art === 'kopf').abstand === 1.05, 'Abstand der Zurrpunkte einstellbar');
+await seite.click('[data-blatt="fertig"]');
+// Palette im Fenster zwischen liegend und hochkant umschalten
+await seite.click('#palette-neu'); await kurz();
+await seite.click('[data-aktion="bearbeiten"]'); await seite.click('[data-lage="hochkant08"]'); await kurz();
+const pal = (await lage()).objekte.at(-1); // die eben hinzugefügte Palette
+pruefe(pal.hochkant && pal.b === 0.8 && pal.h === 1.2, 'Palette lässt sich hochkant stellen');
+await seite.click('[data-lage="liegend"]'); await kurz();
+pruefe(!(await lage()).objekte.at(-1).hochkant, 'und wieder hinlegen');
+await seite.click('[data-blatt="loeschen"]'); await kurz();
+if (bilder) {
+  await seite.evaluate((id) => document.querySelector('[data-waehle="' + id + '"]')?.click(), ibc); await kurz();
+  await seite.screenshot({ path: `${bilder}/kopf-oben.png` });
+}
 
 // 3D-Ansicht: Ziehen
 await seite.click('[data-ansicht="3d"]'); await seite.waitForTimeout(300);
@@ -120,6 +150,8 @@ if (bilder) {
   await handy.click('[data-aktion="bearbeiten"]'); await handy.waitForTimeout(200);
   await handy.screenshot({ path: `${bilder}/handy-blatt.png` });
   await handy.click('[data-blatt="fertig"]');
+  await handy.click('[data-aktion="gurt"]'); await handy.screenshot({ path: `${bilder}/handy-gurtwahl.png` });
+  await handy.click('[data-neu="kopf-hinten"]'); await handy.waitForTimeout(300);
   await handy.click('[data-ansicht="3d"]'); await handy.waitForTimeout(400);
   await handy.screenshot({ path: `${bilder}/handy-3d.png` });
 }
