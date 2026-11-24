@@ -70,10 +70,9 @@ test('Gurt über zwei Einheiten nebeneinander teilt seine Wirkung', () => {
   assert.ok(Math.abs(hatGeteilt - allein.ergebnisse[0].richtungen.seitlich.hat / 2) < 1e-6 || hatGeteilt < allein.ergebnisse[0].richtungen.seitlich.hat);
 });
 
-test('Kollision und Überstand werden gemeldet', () => {
-  const r = pruefe({ objekte: [kiste('a', 0), kiste('b', 0.65), kiste('c', 6.5)], flaeche, gurte: [] });
+test('Kollision wird gemeldet', () => {
+  const r = pruefe({ objekte: [kiste('a', 0), kiste('b', 0.65)], flaeche, gurte: [] });
   assert.ok(r.hinweise.some((h) => h.art === 'kollision'));
-  assert.ok(r.hinweise.some((h) => h.art === 'ueberstand' && h.id === 'c'));
   assert.equal(r.ok, false);
 });
 

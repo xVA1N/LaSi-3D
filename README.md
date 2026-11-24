@@ -12,6 +12,7 @@ Ladungssicherung am Lkw in 3D: Beispiele durchgehen, Zurrarten vergleichen und d
 - **Kopfschlinge (Direktzurren):** über „Gurt +“ hinten oder vorne um die Ladung; auf Wunsch wird eine Palette hochkant als Lastverteiler dazugestellt. Einstellbar: LC und Abstand der Zurrpunkte. Gerechnet je Schenkel mit LC · (cos α · cos β + 0,75 · μ · sin α); Niederzurren und Kopfschlinge werden nicht addiert, es zählt das günstigere
 - **Paletten hochkant:** im Fenster „Lage“ liegend oder hochkant (1,2 oder 0,8 m breit); hochkant zwischen Ladung und Stirnwand zählt sie als Füllmittel für den Formschluss
 - **Zurrgurte (Niederzurren):** frei setzen und verschieben; im Fenster Vorspannkraft S_TF (Plus/Minus oder Schieberegler), Gurttyp, LC, Abstand zur Stirnwand und Ratsche auf einer oder beiden Seiten (k = 1,5 / 2)
+- **Übermaß:** Gewicht gegen die Nutzlast (im Bedienfeld änderbar), Breite (max. 2,55 m), Höhe (max. 4 m), Länge samt Ladung (max. 20,75 m) und Überstand hinten (ab 1 m Kennzeichnung, max. 1,5 m, bei Fahrten bis 100 km 3 m). Ladung darf hinten bis 4 m und seitlich bis 0,5 m überstehen; Markierungen: rote Fahne und Maß am Überstand, rote Grenzflächen bzw. Grenzlinien bei zu breit oder zu hoch, Warnung wenn der Schwerpunkt neben der Fläche liegt. Grenzwerte nach § 22 StVO und § 32 StVZO, Nutzlasten sind Beispielwerte
 - **Prüfung je Ladeeinheit:** vorwärts, rückwärts, seitlich (Auslastung in %), Formschluss an der Stirnwand (auch über davorstehende Ladung) mit Last auf die Stirnwand, Kippen quer und längs; Hinweise bei Überschneidung, Überstand, Gurt ohne Ladung und S_TF über 0,5 · LC. Gesicherte Ladung hat einen grünen, ungesicherte einen roten Umriss
 - **Beispiele** je Fahrzeug; die Beladung bleibt im Browser gespeichert
 
@@ -24,6 +25,7 @@ Gerechnet wird nach dem Verfahren der EN 12195-1:2010 (Beschleunigungsbeiwerte S
 | `src/modell.js` | Stapeln, Ladeeinheiten, Gurte, Prüfung der ganzen Beladung |
 | `src/berechnung.js` | Grundformeln und Beiwerte nach EN 12195-1 |
 | `src/daten.js` | Fahrzeuge, Ladegut, Hilfsmittel, Gurttypen, Beispiele |
+| `src/uebermass.js` | Gewicht, Breite, Höhe, Länge und Überstand gegen StVO/StVZO |
 | `src/aktionen.js` | Verschieben, „An Wand“, Unterlage wechseln, Abstände, Platz für Gurte |
 | `src/main.js` | Ansichten (three.js), Leiste, Fenster, Ziehen und Bedienfeld |
 | `test/*.test.js` | Rechentests mit von Hand nachgerechneten Beispielen |

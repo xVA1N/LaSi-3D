@@ -1,10 +1,12 @@
 // Kataloge für den Editor. Maße in m, Massen in kg, Kräfte in daN.
 // Reibbeiwerte stehen in src/modell.js (REIBWERTE) und sind Richtwerte.
 
+// gesamtlaenge: Fahrzeug bzw. Zug ohne Überstand; laengeMax: Fahrzeug samt Ladung (§ 22 Abs. 2 StVO); nutzlast: Beispielwert,
+// im Fahrzeugschein prüfen und im Bedienfeld anpassen
 export const FAHRZEUGE = [
-  { id: 'sattel', name: 'Sattelauflieger, Pritsche/Plane (13,6 m)', laenge: 13.6, breite: 2.48, hoehe: 1.2, achsen: [-4.4, -3.1, -1.8], haus: false, rungen: 6 },
-  { id: 'motorwagen', name: 'Motorwagen (7,3 m)', laenge: 7.3, breite: 2.48, hoehe: 1.15, achsen: [-2.2, -0.9], haus: true, rungen: 4 },
-  { id: 'klein', name: 'Kleiner Lkw bis 7,5 t (6,2 m)', laenge: 6.2, breite: 2.4, hoehe: 1.0, achsen: [-1.2], haus: true, rungen: 0 },
+  { id: 'sattel', name: 'Sattelauflieger, Pritsche/Plane (13,6 m)', laenge: 13.6, breite: 2.48, hoehe: 1.2, breiteAussen: 2.55, gesamtlaenge: 16.5, laengeMax: 20.75, nutzlast: 24000, achsen: [-4.4, -3.1, -1.8], haus: false, rungen: 6 },
+  { id: 'motorwagen', name: 'Motorwagen (7,3 m)', laenge: 7.3, breite: 2.48, hoehe: 1.15, breiteAussen: 2.55, gesamtlaenge: 10.0, laengeMax: 20.75, nutzlast: 14000, achsen: [-2.2, -0.9], haus: true, rungen: 4 },
+  { id: 'klein', name: 'Kleiner Lkw bis 7,5 t (6,2 m)', laenge: 6.2, breite: 2.4, hoehe: 1.0, breiteAussen: 2.5, gesamtlaenge: 8.3, laengeMax: 20.75, nutzlast: 3300, achsen: [-1.2], haus: true, rungen: 0 },
 ];
 
 export const LADEGUT = [

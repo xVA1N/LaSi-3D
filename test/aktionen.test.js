@@ -37,11 +37,15 @@ test('Abstand nach vorne', () => {
   assert.ok(Math.abs(a.stirnwand - 2.2) < 1e-9);
 });
 
-test('Verschieben bleibt auf der Ladefläche', () => {
+test('Verschieben: seitlich bis 0,5 m, hinten bis 4 m Überstand, vorne bis zur Stirnwand', () => {
   const o = [palette('p', 0), kiste('k', 0)];
   verschiebe(o, stapeln(o), o[1], 0, 5, flaeche);
-  assert.equal(vereinigung(o).z1, 1.24);
+  assert.equal(vereinigung(o).z1, 1.74);
   assert.equal(o[0].z, o[1].z);
+  verschiebe(o, stapeln(o), o[1], -20, 0, flaeche);
+  assert.ok(Math.abs(vereinigung(o).x0 - -10.8) < 1e-9);
+  verschiebe(o, stapeln(o), o[1], 30, 0, flaeche);
+  assert.equal(vereinigung(o).x1, 6.8);
 });
 
 test('Unterlage wechseln: Palette, Matte, beides, zurück auf die Fläche', () => {

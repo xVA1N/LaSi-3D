@@ -62,13 +62,16 @@ export function anWand(objekte, lage, o, flaeche) {
   return ziel - u.x1;
 }
 
-/** Verschiebt die Gruppe, bleibt dabei auf der Ladefläche */
+// Wie weit Ladung über die Ladefläche hinausgeschoben werden kann (vorne ist die Stirnwand)
+export const UEBERSTAND_MAX = { hinten: 4, seitlich: 0.5 };
+
+/** Verschiebt die Gruppe; hinten und seitlich darf sie überstehen, vorne nicht durch die Stirnwand */
 export function verschiebe(objekte, lage, o, dx, dz, flaeche) {
   const { gruppe } = bewegGruppe(objekte, lage, o);
   const u = vereinigung(gruppe);
-  const L = flaeche.laenge / 2, B = flaeche.breite / 2;
-  const kx = Math.min(Math.max(dx, -L - u.x0), L - u.x1);
-  const kz = Math.min(Math.max(dz, -B - u.z0), B - u.z1);
+  const L = flaeche.laenge / 2, B = flaeche.breite / 2 + UEBERSTAND_MAX.seitlich;
+  const kx = Math.min(Math.max(dx, -L - UEBERSTAND_MAX.hinten - u.x0), L - u.x1);
+  const kz = Math.min(Math.max(dz, Math.min(0, -B - u.z0)), Math.max(0, B - u.z1));
   verschiebeAlle(gruppe, kx, kz);
 }
 
