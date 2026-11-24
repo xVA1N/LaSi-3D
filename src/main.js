@@ -529,14 +529,15 @@ function zeigeLeiste() {
     status = objektStatus(o);
     $('leiste-titel').textContent = o.typ === 'rhm' ? o.name : `${o.name} · ${zahl(o.masse, 0)} kg`;
     $('pad').classList.remove('nur-laengs');
+    $('leiste-knoepfe').classList.toggle('vier', o.art === 'europalette');
     $('leiste-knoepfe').innerHTML = knopf('anwand', '⇧', 'An Wand') + knopf('drehen', '⟳', 'Drehen', o.form === 'zylinder' ? 'disabled' : '')
-      + (o.art === 'europalette'
-        ? knopf('hochkant', o.hochkant ? '⤓' : '⤒', o.hochkant ? 'Hinlegen' : 'Hochkant', traegtLast(o) ? 'disabled title="Erst die Ladung herunternehmen"' : '')
-        : knopf('gurt', '⇵', 'Gurt +', o.typ === 'rhm' ? 'disabled' : '')) + knopf('bearbeiten', '✎', 'Bearbeiten') + knopf('kopieren', '⧉', 'Kopieren') + knopf('loeschen', '🗑', 'Löschen', 'class="rot"');
+      + (o.art === 'europalette' ? knopf('hochkant', o.hochkant ? '⤓' : '⤒', o.hochkant ? 'Hinlegen' : 'Hochkant', traegtLast(o) ? 'disabled title="Erst die Ladung herunternehmen"' : '') : '')
+      + knopf('gurt', '⇵', 'Gurt +', o.typ === 'rhm' ? 'disabled' : '') + knopf('bearbeiten', '✎', 'Bearbeiten') + knopf('kopieren', '⧉', 'Kopieren') + knopf('loeschen', '🗑', 'Löschen', 'class="rot"');
   } else {
     status = gurtStatus(g);
     $('leiste-titel').textContent = g.art === 'kopf' ? `Kopfschlinge ${SEITE[g.seite]} · LC ${zahl(g.lc, 0)} daN` : `Zurrgurt · ${zahl(g.stf, 0)} daN`;
     $('pad').classList.add('nur-laengs');
+    $('leiste-knoepfe').classList.remove('vier');
     $('leiste-knoepfe').innerHTML = knopf('bearbeiten', '✎', 'Bearbeiten') + (g.art === 'kopf' ? '' : knopf('kopieren', '⧉', 'Kopieren')) + knopf('loeschen', '🗑', 'Löschen', 'class="rot"');
   }
   $('leiste-status').textContent = status.text;
@@ -712,17 +713,45 @@ function oeffneKopfBlatt() {
 }
 
 let verteilerAn = true;
+/**
+ * Zu welcher Ladung ein Gurt gehört: Ladegut selbst, Ladung auf einer Palette/Matte,
+ * oder bei einer Hochkant-Palette die Ladung, an der sie steht (mit der passenden Seite).
+ */
+function gurtZiel(o) {
+  if (!o) return {};
+  if (o.typ === 'ladung') return { ladung: o };
+  if (o.hochkant) {
+    const f = fussabdruck(o);
+    for (const e of ergebnis.ergebnisse) {
+      const u = e.einheit.f;
+      if (!(u.z0 < f.z1 && f.z0 < u.z1)) continue;
+      const ladung = e.einheit.mitglieder.find((m) => m.typ === 'ladung');
+      if (Math.abs(u.x0 - f.x1) <= 0.05) return { ladung, seite: 'hinten' };
+      if (Math.abs(u.x1 - f.x0) <= 0.05) return { ladung, seite: 'vorne' };
+    }
+    return {};
+  }
+  const e = einheitVon(o);
+  return { ladung: e?.einheit.mitglieder.find((m) => m.typ === 'ladung') };
+}
+
 function oeffneGurtWahl() {
   const o = gewaehltesObjekt();
-  const e = o && o.typ === 'ladung' ? einheitVon(o) : null;
-  const k = (art, titel, text) => `<button type="button" data-neu="${art}" ${art !== 'nieder' && !e ? 'disabled' : ''}><span>${titel}<small>${text}</small></span></button>`;
+  const { ladung, seite } = gurtZiel(o);
+  const e = ladung ? einheitVon(ladung) : null;
+  const k = (art, titel, text) => {
+    const aus = art !== 'nieder' && (!e || (seite && !art.endsWith(seite)));
+    return `<button type="button" data-neu="${art}" ${aus ? 'disabled' : ''}><span>${titel}<small>${text}</small></span></button>`;
+  };
   oeffneBlatt(`<h3 id="blatt-titel">Gurt hinzufügen</h3>
     <div class="katalog" style="grid-template-columns:1fr">
       ${k('nieder', 'Niederzurren', 'quer über die Ladung, drückt sie auf die Fläche')}
       ${k('kopf-hinten', 'Kopfschlinge hinten', 'Schlinge um die Rückseite, hält gegen Rutschen nach hinten')}
       ${k('kopf-vorne', 'Kopfschlinge vorne', 'Schlinge um die Vorderseite, hält gegen Rutschen nach vorne')}
     </div>
-    ${e ? `<div class="chips"><button type="button" data-verteiler class="${verteilerAn ? 'an' : ''}">Palette hochkant als Lastverteiler dazustellen</button></div>` : '<p class="werte">Für eine Kopfschlinge zuerst Ladegut antippen.</p>'}
+    ${e && !seite ? `<div class="chips"><button type="button" data-verteiler class="${verteilerAn ? 'an' : ''}">Palette hochkant als Lastverteiler dazustellen</button></div>` : ''}
+    ${seite ? '<p class="werte">Die Schlinge läuft um diese Palette und die Ladung dahinter.</p>' : ''}
+    ${!e ? `<p class="werte">${o?.hochkant ? 'Für eine Kopfschlinge die Palette direkt an die Ladung stellen (Knopf „An Wand“ oder ziehen).' : 'Für eine Kopfschlinge zuerst Ladegut antippen.'}</p>` : ''}
     <div style="height:12px"></div>${fuss(false)}`);
 }
 
@@ -821,9 +850,13 @@ blattInhalt.addEventListener('click', (ev) => {
     const art = el.dataset.neu, sel = gewaehltesObjekt();
     schliesseBlatt();
     if (art === 'nieder') {
-      const e = sel ? einheitVon(sel) : ergebnis.ergebnisse.find((x) => x.gurte.length === 0);
+      const ziel = gurtZiel(sel).ladung;
+      const e = ziel ? einheitVon(ziel) : ergebnis.ergebnisse.find((x) => x.gurte.length === 0);
       neuerGurt(e ? freierGurtX(zustand.gurte, e.einheit.f) : ansicht === 'oben' ? steuerOben.target.x : 0);
-    } else neueKopfschlinge(sel, art === 'kopf-hinten' ? 'hinten' : 'vorne');
+    } else {
+      const { ladung } = gurtZiel(sel);
+      if (ladung) neueKopfschlinge(ladung, art === 'kopf-hinten' ? 'hinten' : 'vorne');
+    }
   } else if (el.dataset.ladegut) {
     schliesseBlatt();
     neuesObjekt(LADEGUT.find((v) => v.art === el.dataset.ladegut));

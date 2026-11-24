@@ -101,6 +101,17 @@ const stehend = nachKopf.objekte.filter((o) => o.hochkant);
 pruefe(nachKopf.objekte.length === anzahl + 1 && stehend.length === 1, 'Kopfschlinge stellt eine Palette hochkant hinter die Ladung');
 pruefe(nachKopf.gurte.some((g) => g.art === 'kopf' && g.ziel === ibc), 'Kopfschlinge hängt an der Ladung');
 pruefe((await seite.textContent('#leiste-status')).includes('Lastverteiler'), 'Schlinge liegt um die Palette');
+const kopfVorher = nachKopf.gurte.filter((g) => g.art === 'kopf').length;
+await seite.click('[data-aktion="loeschen"]'); await kurz(); // Schlinge löschen
+const palId = (await lage()).objekte.find((o) => o.hochkant).id;
+const pp = await seite.evaluate((id) => window.lasi.bildschirm(id, 0, 0.5), palId);
+await seite.mouse.click(pp.x, pp.y); await kurz();
+pruefe(await seite.evaluate(() => window.lasi.auswahl()?.id) === palId, 'Hochkant-Palette lässt sich antippen');
+await seite.click('[data-aktion="gurt"]');
+pruefe(await seite.isEnabled('[data-neu="kopf-hinten"]') && await seite.isDisabled('[data-neu="kopf-vorne"]'), 'An der Palette wird die passende Kopfschlinge angeboten');
+await seite.click('[data-neu="kopf-hinten"]'); await kurz();
+pruefe((await lage()).gurte.filter((g) => g.art === 'kopf').length === kopfVorher, 'Kopfschlinge von der Palette aus angelegt');
+pruefe((await lage()).objekte.filter((o) => o.hochkant).length === 1, 'dabei keine zweite Palette dazugestellt');
 const karte = await seite.textContent(`[data-waehle="${ibc}"]`);
 pruefe(karte.includes('Kopfschlinge'), 'Prüfung nennt die Kopfschlinge für rückwärts');
 await seite.click('[data-aktion="bearbeiten"]');
@@ -119,6 +130,7 @@ await seite.click('[data-aktion="hochkant"]'); await kurz();
 pruefe((await lage()).objekte.at(-1).hochkant, 'Knopf „Hochkant“ in der Leiste stellt die Palette auf');
 await seite.click('[data-aktion="hochkant"]'); await kurz();
 pruefe(!(await lage()).objekte.at(-1).hochkant, 'Knopf „Hinlegen“ legt sie wieder hin');
+pruefe(await seite.isEnabled('[data-aktion="gurt"]'), 'Auch an einer Palette gibt es „Gurt +“');
 await seite.click('[data-aktion="loeschen"]'); await kurz();
 if (bilder) {
   await seite.evaluate((id) => document.querySelector('[data-waehle="' + id + '"]')?.click(), ibc); await kurz();

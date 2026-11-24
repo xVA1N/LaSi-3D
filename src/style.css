@@ -44,6 +44,8 @@ button.gefahr { background: var(--schlecht); color: #fff; }
 .icons button { background: var(--feld); color: var(--text); padding: 5px 2px; font-size: 11.5px; line-height: 1.2; }
 .icons button em { display: block; font-style: normal; font-size: 17px; }
 .icons button.rot { color: var(--schlecht); }
+.icons.vier { grid-template-columns: repeat(4, 1fr); gap: 4px; }
+.icons.vier button { font-size: 10.5px; padding: 5px 1px; }
 
 /* Bedienfeld */
 .panel { overflow: auto; padding: 16px; background: var(--karte); border-left: 1px solid var(--rand); }
