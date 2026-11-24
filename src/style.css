@@ -16,7 +16,9 @@ button.gefahr { background: var(--schlecht); color: #fff; }
 /* Ansicht */
 #szene { position: relative; min-height: 0; overflow: hidden; }
 #szene canvas { display: block; width: 100%; height: 100%; touch-action: none; }
-.status { position: absolute; left: 12px; top: 12px; max-width: calc(100% - 185px); line-height: 1.25; padding: 6px 12px; border-radius: 999px; font-weight: 600; font-size: .9rem; background: var(--karte); box-shadow: 0 1px 4px #0003; }
+.oben-links { position: absolute; left: 12px; top: 12px; max-width: calc(100% - 185px); display: flex; flex-direction: column; align-items: flex-start; gap: 6px; pointer-events: none; }
+.oben-links > * { pointer-events: auto; }
+.status { position: static; line-height: 1.25; padding: 6px 12px; border-radius: 999px; font-weight: 600; font-size: .9rem; background: var(--karte); box-shadow: 0 1px 4px #0003; }
 .ansicht { position: absolute; right: 12px; top: 12px; display: flex; border-radius: 10px; overflow: hidden; box-shadow: 0 1px 4px #0003; }
 .ansicht button { border-radius: 0; background: var(--karte); color: var(--knopf); padding: 6px 12px; font-size: .9rem; }
 .ansicht button.an { background: var(--knopf); color: var(--knopf-text); }
@@ -124,3 +126,19 @@ li.pflicht { color: #b26a00; }
 .plan text { font-size: 10px; fill: var(--leise); }
 .plan circle.ok { fill: #1f6fb2; stroke: #fff; stroke-width: 2; } .plan circle.nein { fill: #d32f2f; stroke: #fff; stroke-width: 2; }
 .plan-titel { font-size: .82rem; font-weight: 600; margin-top: 8px; }
+
+.achsbox { background: var(--karte); border-radius: 10px; box-shadow: 0 1px 4px #0003; padding: 5px 8px; font-size: 12px; line-height: 1.35; font-variant-numeric: tabular-nums; }
+.achsbox:empty { display: none; }
+.achsbox .gruppe { color: var(--leise); font-size: 10.5px; font-weight: 600; margin-top: 2px; }
+.achsbox .zeile { display: flex; align-items: center; gap: 6px; }
+.achsbox .nr { display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; border-radius: 50%; background: var(--knopf); color: var(--knopf-text); font-weight: 700; font-size: 11px; }
+.achsbox .nr.zapfen { background: transparent; color: var(--text); font-size: 15px; }
+.achsbox .wert { font-weight: 600; } .achsbox .max { color: var(--leise); font-size: 10.5px; }
+.achsbox .zu { color: var(--schlecht); } .achsbox .zu .nr { background: var(--schlecht); color: #fff; }
+.marke.achsnr { width: 20px; height: 20px; border-radius: 50%; background: var(--knopf); color: var(--knopf-text); font-weight: 700; font-size: 11px; display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 3px #0004; }
+.marke.achsnr.zu { background: #c62828; color: #fff; }
+.marke.achsnr.zapfen { background: #fff; color: #1d2420; font-size: 14px; }
+
+.achsbox { cursor: pointer; user-select: none; }
+.achsbox .kopf { display: flex; justify-content: space-between; gap: 8px; font-weight: 700; font-size: 11px; }
+.achsbox.zu-klein .inhalt { display: none; }
