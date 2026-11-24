@@ -109,6 +109,8 @@ export function gurtLage(gurt, einheiten, flaecheBreite) {
 
 // Direktzurren: Reibbeiwert wird mit f_μ = 0,75 abgemindert (EN 12195-1)
 export const F_MU_DIREKT = 0.75;
+// Zurrpunkte für Direktzurren sitzen außen am Rahmen, so weit neben der Ladefläche
+export const ZURRPUNKT_AUSSEN = 0.065;
 const istKopf = (g) => g.art === 'kopf';
 
 /**
@@ -117,7 +119,7 @@ const istKopf = (g) => g.art === 'kopf';
  * Die beiden Schenkel laufen zu Zurrpunkten am Außenrahmen im Abstand `abstand` von der Fläche.
  */
 export function kopfLage(g, einheit, verteiler, flaeche) {
-  const L = flaeche.laenge / 2, B = flaeche.breite / 2;
+  const L = flaeche.laenge / 2, B = flaeche.breite / 2 + ZURRPUNKT_AUSSEN;
   const hinten = g.seite !== 'vorne';
   let x = hinten ? einheit.f.x0 : einheit.f.x1;
   let z0 = einheit.f.z0, z1 = einheit.f.z1, hoeheFlaeche = einheit.hoehe;
@@ -152,6 +154,42 @@ export function kopfLage(g, einheit, verteiler, flaeche) {
   };
 }
 
+/**
+ * Diagonal- oder Schrägzurren: ein Gurt von einer Ecke der Ladeeinheit (Zurrpunkt an der Ladung,
+ * Höhe `anschlag`) zum Zurrpunkt am Außenrahmen derselben Seite, `abstand` m nach vorne (vordere Ecke)
+ * bzw. nach hinten (hintere Ecke). abstand 0 = Schrägzurren quer.
+ * ecke: 'vl' | 'vr' | 'hl' | 'hr' (vorne/hinten, links/rechts)
+ */
+export function direktLage(g, einheit, flaeche) {
+  const L = flaeche.laenge / 2, B = flaeche.breite / 2 + ZURRPUNKT_AUSSEN;
+  const vorne = g.ecke[0] === 'v', links = g.ecke[1] === 'l';
+  const f = einheit.f;
+  const p = { x: vorne ? f.x1 : f.x0, y: Math.min(g.anschlag ?? 0.3, einheit.hoehe), z: links ? f.z0 : f.z1 };
+  const a = { x: Math.min(Math.max(p.x + (vorne ? 1 : -1) * g.abstand, -L), L), y: 0, z: links ? -B : B };
+  const v = { x: a.x - p.x, y: a.y - p.y, z: a.z - p.z };
+  const n = Math.hypot(v.x, v.y, v.z) || 1;
+  const d = { x: v.x / n, y: v.y / n, z: v.z / n };
+  const grad = (r) => (r * 180) / Math.PI;
+  return { p, a, d, laenge: n, winkel: grad(Math.asin(Math.min(1, -d.y))), beta: grad(Math.atan2(Math.abs(d.z), Math.abs(d.x))) };
+}
+
+/** Haltekraft eines Direktzurrgurts je Rutschrichtung: LC · (cos α · cos β + μ_D · sin α), nur wenn er dabei gespannt wird */
+export function direktWirkung(d, lcN, mu) {
+  const muD = mu * F_MU_DIREKT, unten = Math.max(0, -d.y);
+  const zug = (h) => (h > 1e-9 ? lcN * (h + muD * unten) : 0);
+  return { vorwaerts: zug(-d.x), rueckwaerts: zug(d.x), rechts: zug(-d.z), links: zug(d.z) };
+}
+
+/** Aufrichtendes Moment eines Gurts gegen Kippen um die jeweilige Unterkante (nur ziehend, nie drückend) */
+export function direktKippmomente(p, d, lcN, f) {
+  const F = { x: d.x * lcN, y: d.y * lcN, z: d.z * lcN };
+  const m = (r, fy, fh) => Math.max(0, r * fy - p.y * fh);
+  return {
+    rechts: m(p.z - f.z1, F.y, F.z), links: m(f.z0 - p.z, F.y, -F.z),
+    vorwaerts: m(p.x - f.x1, F.y, F.x), rueckwaerts: m(f.x0 - p.x, F.y, -F.x),
+  };
+}
+
 /** Vorspannkraft, mit der gerechnet wird: höchstens 0,5 · LC */
 export const rechenkraftDaN = (gurt) => Math.min(gurt.stf, gurt.lc / 2);
 
@@ -168,7 +206,8 @@ export function pruefe({ objekte, gurte, flaeche }) {
   const verteiler = objekte.filter((o) => o.typ === 'palette' && o.hochkant);
 
   // Beitrag jedes Gurts zu jeder Einheit
-  const beitrag = new Map(einheiten.map((e) => [e.id, { reib: 0, kipp: 0, gurte: [], kopf: { vorwaerts: 0, rueckwaerts: 0 } }]));
+  const leer = () => ({ vorwaerts: 0, rueckwaerts: 0, rechts: 0, links: 0 });
+  const beitrag = new Map(einheiten.map((e) => [e.id, { reib: 0, kipp: 0, gurte: [], kopf: { vorwaerts: 0, rueckwaerts: 0 }, direkt: leer(), moment: leer(), quellen: { vorwaerts: new Set(), rueckwaerts: new Set(), seitlich: new Set() } }]));
   const gurtInfo = gurte.map((g) => {
     if (istKopf(g)) {
       const e = einheiten.find((x) => x.mitglieder.some((m) => m.id === g.ziel));
@@ -178,9 +217,28 @@ export function pruefe({ objekte, gurte, flaeche }) {
       }
       const k = kopfLage(g, e, verteiler, flaeche);
       const b = beitrag.get(e.id);
-      b.kopf[k.richtung] += g.lc * 10 * k.faktor(e.mu);
+      const kraft = g.lc * 10 * k.faktor(e.mu);
+      b.kopf[k.richtung] += kraft;
+      b.direkt[k.richtung] += kraft;
+      b.quellen[k.richtung].add('kopf');
       b.gurte.push(g.id);
       return { id: g.id, art: 'kopf', getroffen: [e.id], ...k, faktor: undefined };
+    }
+    if (g.art === 'direkt') {
+      const e = einheiten.find((x) => x.mitglieder.some((m) => m.id === g.ziel));
+      if (!e) {
+        hinweise.push({ art: 'gurt', id: g.id, text: 'Direktzurrung ohne Ladung.' });
+        return { id: g.id, art: 'direkt', getroffen: [], winkel: 0 };
+      }
+      const k = direktLage(g, e, flaeche);
+      const b = beitrag.get(e.id);
+      const w = direktWirkung(k.d, g.lc * 10, e.mu);
+      const mo = direktKippmomente(k.p, k.d, g.lc * 10, e.basis);
+      for (const r of Object.keys(w)) { b.direkt[r] += w[r]; b.moment[r] += mo[r]; }
+      for (const r of ['vorwaerts', 'rueckwaerts']) if (w[r] > 0) b.quellen[r].add(g.variante);
+      if (w.rechts > 0 || w.links > 0) b.quellen.seitlich.add(g.variante);
+      b.gurte.push(g.id);
+      return { id: g.id, art: 'direkt', getroffen: [e.id], ...k };
     }
     const gl = gurtLage(g, einheiten, B);
     const ft = rechenkraftDaN(g) * 10; // N
@@ -222,13 +280,16 @@ export function pruefe({ objekte, gurte, flaeche }) {
       const formschluss = r === 'vorwaerts' && vorne.has(e.id);
       if (formschluss) stirnwandLast += Math.max(0, (c - e.mu * cz) * e.masse * G);
       const d = { brauch, hat: b.reib, formschluss, methode: 'nieder', ok: formschluss || brauch <= b.reib + 1e-6, auslastung: brauch === 0 ? 0 : b.reib > 0 ? brauch / b.reib : Infinity };
-      // Kopfschlinge (Direktzurren): μ mit f_μ abgemindert, gerechnet mit LC.
-      // Die Verfahren werden nicht addiert; es zählt das günstigere.
-      const kopf = b.kopf[r] ?? 0;
-      if (kopf > 0 && !formschluss && brauch > 0) {
+      // Direktzurren (Kopfschlinge, Diagonal-, Schrägzurren): μ mit f_μ abgemindert, gerechnet mit LC.
+      // Direktzurrungen werden addiert, mit Niederzurren nicht; es zählt das günstigere Verfahren.
+      // Seitlich zählt die schwächere der beiden Seiten.
+      const direkt = r === 'seitlich' ? Math.min(b.direkt.rechts, b.direkt.links) : b.direkt[r];
+      if (direkt > 0 && !formschluss && brauch > 0) {
         const brauchDirekt = Math.max(0, (c - e.mu * F_MU_DIREKT * cz) * e.masse * G);
-        const k = brauchDirekt / kopf;
-        if (k < d.auslastung) Object.assign(d, { methode: 'kopf', brauch: brauchDirekt, hat: kopf, auslastung: k, ok: d.ok || k <= 1 });
+        const k = brauchDirekt / direkt;
+        const quellen = b.quellen[r];
+        const methode = quellen.size === 1 && quellen.has('kopf') ? 'kopf' : 'direkt';
+        if (k < d.auslastung) Object.assign(d, { methode, brauch: brauchDirekt, hat: direkt, auslastung: k, ok: d.ok || k <= 1 });
       }
       richtungen[r] = d;
     }
@@ -236,11 +297,15 @@ export function pruefe({ objekte, gurte, flaeche }) {
     const w = e.basis.lz, l = e.basis.lx;
     const kippBrauch = e.masse * G * (BEIWERTE_STRASSE.seitlichKippen.c * e.schwerpunkt - w / 2);
     // nach vorne hält der Formschluss auch gegen Kippen
+    // Direktzurrungen halten über ihre Momente um die Kippkante; seitlich zählt die schwächere Seite
+    const kippHat = Math.max(b.kipp, Math.min(b.moment.rechts, b.moment.links));
+    const kippLaengs = (c) => e.masse * G * (c * e.schwerpunkt - l / 2);
+    const vorKipp = kippLaengs(BEIWERTE_STRASSE.vorwaerts.c), rueckKipp = kippLaengs(BEIWERTE_STRASSE.rueckwaerts.c);
     const kippen = {
-      seitlich: { ok: kippBrauch <= b.kipp + 1e-6, brauch: Math.max(0, kippBrauch), hat: b.kipp },
+      seitlich: { ok: kippBrauch <= kippHat + 1e-6, brauch: Math.max(0, kippBrauch), hat: kippHat },
       laengs: {
-        ok: (vorne.has(e.id) || b.kopf.vorwaerts > 0 || BEIWERTE_STRASSE.vorwaerts.c * e.schwerpunkt <= l / 2)
-          && (b.kopf.rueckwaerts > 0 || BEIWERTE_STRASSE.rueckwaerts.c * e.schwerpunkt <= l / 2),
+        ok: (vorne.has(e.id) || b.kopf.vorwaerts > 0 || vorKipp <= b.moment.vorwaerts + 1e-6)
+          && (b.kopf.rueckwaerts > 0 || rueckKipp <= b.moment.rueckwaerts + 1e-6),
       },
     };
     const ok = RICHTUNGEN.every((r) => richtungen[r].ok) && kippen.seitlich.ok && kippen.laengs.ok;

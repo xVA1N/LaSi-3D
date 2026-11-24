@@ -106,8 +106,8 @@ test('Kopfschlinge hinten sichert rückwärts (Direktzurren, μ · 0,75)', () =>
   assert.equal(d.methode, 'kopf');
   // Bedarf: (0,5 − 0,45 · 0,75) · 1200 · 9,81 = 1912,95 N
   assert.ok(Math.abs(d.brauch - 1912.95) < 0.01);
-  // Geometrie: Schlinge auf 0,5 m Höhe, Ecken bei z = ±0,5, Anker 1 m davor am Rand (z = ±1,24)
-  const horizontal = Math.hypot(1, 0.74), a = Math.atan2(0.5, horizontal), b = Math.atan2(0.74, 1);
+  // Geometrie: Schlinge auf 0,5 m Höhe, Ecken bei z = ±0,5, Anker 1 m davor am Rahmen (z = ±1,305)
+  const horizontal = Math.hypot(1, 0.805), a = Math.atan2(0.5, horizontal), b = Math.atan2(0.805, 1);
   const erwartet = 2 * 25000 * (Math.cos(a) * Math.cos(b) + 0.45 * 0.75 * Math.sin(a));
   assert.ok(Math.abs(d.hat - erwartet) < 0.01);
   assert.equal(r.ergebnisse[0].richtungen.vorwaerts.ok, false); // hinten hält nicht nach vorne
@@ -137,4 +137,57 @@ test('Hochkant-Palette zwischen Stirnwand und Ladung gilt als Füllmittel', () =
 test('Kopfschlinge ohne Ladung wird gemeldet', () => {
   const r = pruefe({ objekte: [], flaeche, gurte: [kopf('s', 'weg')] });
   assert.ok(r.hinweise.some((h) => h.id === 's'));
+});
+
+const direkt = (id, ziel, ecke, mehr = {}) => ({ id, art: 'direkt', variante: 'diagonal', ziel, ecke, abstand: 1.0, anschlag: 0.5, lc: 2500, stf: 500, ...mehr });
+const diagonal = (ziel, mehr) => ['vl', 'vr', 'hl', 'hr'].map((e) => direkt(`d${e}`, ziel, e, mehr));
+
+test('Diagonalzurren: 4 Gurte halten längs und quer (nachgerechnet)', () => {
+  const k = kiste('k', 0, 0, { b: 1.0 });
+  const r = pruefe({ objekte: [k], flaeche, gurte: diagonal('k') });
+  const e = r.ergebnisse[0];
+  assert.equal(e.ok, true);
+  // hinterer Gurt: von (−0,6 | 0,5 | −0,5) nach (−1,6 | 0 | −1,305) am Rahmen
+  const n = Math.hypot(1, 0.5, 0.805);
+  const proGurtLaengs = 25000 * (1 / n + 0.45 * 0.75 * (0.5 / n));
+  assert.ok(Math.abs(e.richtungen.vorwaerts.hat - 2 * proGurtLaengs) < 0.01);
+  assert.equal(e.richtungen.vorwaerts.methode, 'direkt');
+  // Bedarf vorwärts: (0,8 − 0,45 · 0,75) · 1200 · 9,81
+  assert.ok(Math.abs(e.richtungen.vorwaerts.brauch - 0.4625 * 1200 * 9.81) < 0.01);
+  const proGurtQuer = 25000 * (0.805 / n + 0.3375 * (0.5 / n));
+  assert.ok(Math.abs(e.richtungen.seitlich.hat - 2 * proGurtQuer) < 0.01);
+  assert.equal(r.gurte[0].art, 'direkt');
+  assert.ok(r.gurte[0].winkel > 0 && r.gurte[0].beta > 0);
+});
+
+test('Schrägzurren quer hält seitlich, aber nicht längs', () => {
+  const k = kiste('k', 0, 0, { b: 1.0 });
+  const r = pruefe({ objekte: [k], flaeche, gurte: diagonal('k', { abstand: 0, variante: 'schraeg' }) });
+  const e = r.ergebnisse[0];
+  assert.equal(e.richtungen.seitlich.ok, true);
+  assert.equal(e.richtungen.seitlich.methode, 'direkt');
+  assert.equal(e.richtungen.vorwaerts.ok, false);
+  assert.equal(e.richtungen.vorwaerts.hat, 0);
+});
+
+test('Nur Gurte auf einer Seite halten seitlich nicht (schwächere Seite zählt)', () => {
+  const k = kiste('k', 0, 0, { b: 1.0 });
+  const r = pruefe({ objekte: [k], flaeche, gurte: [direkt('a', 'k', 'vl'), direkt('b', 'k', 'hl')] });
+  assert.equal(r.ergebnisse[0].richtungen.seitlich.ok, false);
+});
+
+test('Direktzurren hält hohe schmale Ladung gegen Kippen', () => {
+  const turm = { ...kiste('t', 0), b: 0.6, l: 0.6, h: 2.0, masse: 500 };
+  assert.equal(pruefe({ objekte: [turm], flaeche, gurte: [] }).ergebnisse[0].kippen.seitlich.ok, false);
+  const r = pruefe({ objekte: [turm], flaeche, gurte: diagonal('t', { anschlag: 1.8 }) });
+  assert.equal(r.ergebnisse[0].kippen.seitlich.ok, true);
+  assert.equal(r.ergebnisse[0].kippen.laengs.ok, true);
+});
+
+test('Direktzurren an bündig am Rand stehender Ladung: Zurrpunkt außen am Rahmen gibt kleinen Winkel', () => {
+  const k = kiste('k', 0, -0.74, { b: 1.0 }); // linke Kante bei −1,24 = Rand der Ladefläche
+  const r = pruefe({ objekte: [k], flaeche, gurte: diagonal('k', { abstand: 0, variante: 'schraeg' }) });
+  const links = r.gurte.find((g) => g.id === 'dhl');
+  assert.ok(Math.abs(links.a.z - -1.305) < 1e-9);
+  assert.ok(links.d.z < 0 && links.d.z > -0.2); // fast senkrecht
 });

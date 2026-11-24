@@ -148,6 +148,32 @@ for (let i = 1; i <= 10; i++) await seite.mouse.move(q.x - i * 12, q.y + i * 4);
 await seite.mouse.up(); await kurz();
 pruefe(Math.abs((await objektById(box)).x - x3) > 0.2, 'Ziehen in 3D verschiebt');
 
+// Diagonal- und Schrägzurren
+await seite.selectOption('#fahrzeug', 'sattel'); await seite.click('#beispiel'); await kurz();
+await seite.click('#ladegut-neu'); await seite.click('[data-ladegut="gitterbox"]'); await kurz();
+const box2 = await seite.evaluate(() => window.lasi.auswahl().id);
+await seite.evaluate((id) => window.lasi.setze(id, { z: 0 }), box2); await kurz(); // mittig, damit die Gurte seitlich ziehen können
+await seite.click('[data-aktion="gurt"]'); await seite.click('[data-neu="diagonal"]'); await kurz();
+let dg = (await lage()).gurte.filter((g) => g.art === 'direkt');
+pruefe(dg.length === 4 && dg.every((g) => g.ziel === box2), 'Diagonalzurren legt 4 Gurte an die Ladung');
+pruefe((await status()).includes('✓'), 'Mit Diagonalzurren gesichert');
+pruefe((await seite.textContent(`[data-waehle="${box2}"]`)).includes('Direktzurren'), 'Prüfung nennt Direktzurren');
+await seite.click('[data-aktion="bearbeiten"]');
+await seite.click('[data-feld="dabstand"] [data-d="1"]'); await kurz();
+dg = (await lage()).gurte.filter((g) => g.art === 'direkt');
+pruefe(dg.every((g) => g.abstand === 1.05), 'Abstand gilt für alle 4 Gurte');
+await seite.click('[data-blatt="alle-loeschen"]'); await kurz();
+pruefe(!(await lage()).gurte.some((g) => g.art === 'direkt'), '„Alle löschen“ entfernt die ganze Zurrung');
+await seite.evaluate((id) => document.querySelector('[data-waehle="' + id + '"]')?.click(), box2); await kurz();
+await seite.click('[data-aktion="gurt"]'); await seite.click('[data-neu="schraeg"]'); await kurz();
+dg = (await lage()).gurte.filter((g) => g.art === 'direkt');
+pruefe(dg.length === 4 && dg.every((g) => g.abstand === 0 && g.variante === 'schraeg'), 'Schrägzurren: 4 Gurte quer zur Seite');
+const kartenText = await seite.textContent(`[data-waehle="${box2}"]`);
+pruefe(/seitlich.*Direktzurren/.test(kartenText) && /vorwärts\s*Formschluss|vorwärts\s*ungesichert|vorwärts\s*\d/.test(kartenText), 'Schrägzurren hält seitlich');
+await seite.evaluate((id) => document.querySelector('[data-waehle="' + id + '"]')?.click(), box2); await kurz();
+await seite.click('[data-aktion="loeschen"]'); await kurz();
+pruefe(!(await lage()).gurte.some((g) => g.art === 'direkt'), 'Mit der Ladung gehen auch ihre Direktzurrungen');
+
 // Übermaß: Nutzlast, Überstand hinten mit Fahne, zu breit
 await seite.selectOption('#fahrzeug', 'sattel'); await seite.click('#beispiel'); await kurz();
 await seite.fill('#nutzlast', '5000'); await seite.waitForTimeout(250);
