@@ -16,6 +16,7 @@ Ladungssicherung am Lkw in 3D: Beispiele durchgehen, Zurrarten vergleichen und d
 - **Ladereihen:** Einheiten, die sich in Längsrichtung überdecken, bilden eine Reihe; nummeriert von der Stirnwand nach hinten, im Wechsel blau/grün auf der Fläche und den Außenrahmen markiert, mit Schild „LR1“, „LR2“ …; die Ladereihe steht auch in der Prüfung und in der Leiste
 - **Mangelhafte Zurrmittel:** Gurte, die durch andere Ladung oder Paletten laufen, auf keiner Ladung liegen oder fast senkrecht stehen, zählen nicht; sie blinken rot (auch durch die Ladung sichtbar), oben links steht „Zurrmittel mangelhaft“
 - **Lose Teile:** leere liegende Paletten sind Ladung und müssen gesichert werden; hochkant stehende Paletten gelten nur als Füllmittel vor der Stirnwand oder als Lastverteiler einer Kopfschlinge als gehalten
+- **Achslasten:** Last je Achse bzw. Achsgruppe über das Hebelgesetz (Sattelzug: Königszapfen und Achsaggregat, Zapfenlast auf Vorder- und Antriebsachse), Anteil der Lenkachse (Richtwert mind. 20 %), Lastverteilungsplan als Diagramm, Schwerpunkt der Ladung auf der Fläche, überladene Achsen rot markiert. Leergewichte und zulässige Achslasten sind Beispielwerte
 - **Übermaß:** Gewicht gegen die Nutzlast (im Bedienfeld änderbar), Breite (max. 2,55 m), Höhe (max. 4 m), Länge samt Ladung (max. 20,75 m) und Überstand hinten (ab 1 m Kennzeichnung, max. 1,5 m, bei Fahrten bis 100 km 3 m). Ladung darf hinten bis 4 m und seitlich bis 0,5 m überstehen; Markierungen: rote Fahne und Maß am Überstand, rote Grenzflächen bzw. Grenzlinien bei zu breit oder zu hoch, Warnung wenn der Schwerpunkt neben der Fläche liegt. Grenzwerte nach § 22 StVO und § 32 StVZO, Nutzlasten sind Beispielwerte
 - **Prüfung je Ladeeinheit:** vorwärts, rückwärts, seitlich (Auslastung in %), Formschluss an der Stirnwand (auch über davorstehende Ladung) mit Last auf die Stirnwand, Kippen quer und längs; Hinweise bei Überschneidung, Überstand, Gurt ohne Ladung und S_TF über 0,5 · LC. Gesicherte Ladung hat einen grünen, ungesicherte einen roten Umriss
 - **Beispiele** je Fahrzeug; die Beladung bleibt im Browser gespeichert
@@ -29,6 +30,7 @@ Gerechnet wird nach dem Verfahren der EN 12195-1:2010 (Beschleunigungsbeiwerte S
 | `src/modell.js` | Stapeln, Ladeeinheiten, Gurte, Prüfung der ganzen Beladung |
 | `src/berechnung.js` | Grundformeln und Beiwerte nach EN 12195-1 |
 | `src/daten.js` | Fahrzeuge, Ladegut, Hilfsmittel, Gurttypen, Beispiele |
+| `src/achslast.js` | Achslasten, Schwerpunkt, Lastverteilungsplan |
 | `src/uebermass.js` | Gewicht, Breite, Höhe, Länge und Überstand gegen StVO/StVZO |
 | `src/aktionen.js` | Verschieben, „An Wand“, Unterlage wechseln, Abstände, Platz für Gurte |
 | `src/main.js` | Ansichten (three.js), Leiste, Fenster, Ziehen und Bedienfeld |

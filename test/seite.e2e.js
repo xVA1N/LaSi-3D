@@ -272,6 +272,16 @@ await seite.evaluate((id) => window.lasi.setze(id, { x: -6.8 + 1.5 - 1.2, b: 1.0
 await seite.click('[data-schub="0,-1"]'); await kurz();
 pruefe((await seite.evaluate(() => window.lasi.uebermass())).ueberHinten > 1.2, 'Pfeil schiebt weiter über die Hinterkante');
 
+// Achslasten: schwere Ladung ganz vorne auf dem kleinen Lkw überlädt die Vorderachse
+await seite.selectOption('#fahrzeug', 'klein'); await seite.click('#beispiel'); await kurz();
+pruefe((await seite.textContent('#ergebnis')).includes('Achslasten') && await seite.isVisible('svg.plan'), 'Achslasten und Lastverteilungsplan werden angezeigt');
+pruefe((await seite.textContent('#marken')).includes('Schwerpunkt'), 'Schwerpunkt der Ladung wird markiert');
+const fass = (await lage()).objekte.find((o) => o.art === 'fass');
+await seite.evaluate((id) => window.lasi.setze(id, { masse: 1500 }), fass.id); await kurz();
+const ach = await seite.evaluate(() => window.lasi.achslasten());
+pruefe(ach.achsen.some((a) => !a.ok) && (await status()).includes('Achslast'), 'Überladene Achse wird gemeldet');
+pruefe((await seite.textContent('#marken')).includes('Vorderachse'), 'Überladene Achse wird in der Ansicht markiert');
+
 for (const f of ['motorwagen', 'klein']) {
   await seite.selectOption('#fahrzeug', f);
   await seite.click('#beispiel'); await kurz();
