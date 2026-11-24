@@ -3,10 +3,27 @@
 
 // gesamtlaenge: Fahrzeug bzw. Zug ohne Überstand; laengeMax: Fahrzeug samt Ladung (§ 22 Abs. 2 StVO); nutzlast: Beispielwert,
 // im Fahrzeugschein prüfen und im Bedienfeld anpassen
+// achslast: Lage der Achsen (x wie auf der Ladefläche), Leergewicht je Achse und zulässige Achslast (Beispielwerte)
 export const FAHRZEUGE = [
-  { id: 'sattel', name: 'Sattelauflieger, Pritsche/Plane (13,6 m)', laenge: 13.6, breite: 2.48, hoehe: 1.2, breiteAussen: 2.55, gesamtlaenge: 16.5, laengeMax: 20.75, nutzlast: 24000, achsen: [-4.4, -3.1, -1.8], haus: false, rungen: 6 },
-  { id: 'motorwagen', name: 'Motorwagen (7,3 m)', laenge: 7.3, breite: 2.48, hoehe: 1.15, breiteAussen: 2.55, gesamtlaenge: 10.0, laengeMax: 20.75, nutzlast: 14000, achsen: [-2.2, -0.9], haus: true, rungen: 4 },
-  { id: 'klein', name: 'Kleiner Lkw bis 7,5 t (6,2 m)', laenge: 6.2, breite: 2.4, hoehe: 1.0, breiteAussen: 2.5, gesamtlaenge: 8.3, laengeMax: 20.75, nutzlast: 3300, achsen: [-1.2], haus: true, rungen: 0 },
+  { id: 'sattel', name: 'Sattelauflieger, Pritsche/Plane (13,6 m)', laenge: 13.6, breite: 2.48, hoehe: 1.2, breiteAussen: 2.55, gesamtlaenge: 16.5, laengeMax: 20.75, nutzlast: 24000, achsen: [-4.4, -3.1, -1.8], haus: false, rungen: 6,
+    achslast: {
+      art: 'sattel', zapfen: { x: 6.3, leer: 2500 },
+      aggregat: { name: 'Achsaggregat Auflieger', x: -3.1, raeder: [-4.4, -3.1, -1.8], leer: 4500, max: 24000 },
+      vorn: { name: 'Vorderachse Zugmaschine', x: 8.7, raeder: [8.7], leer: 5500, max: 8000 },
+      antrieb: { name: 'Antriebsachse Zugmaschine', x: 5.8, raeder: [5.8], leer: 2000, max: 11500 },
+    } },
+  { id: 'motorwagen', name: 'Motorwagen (7,3 m)', laenge: 7.3, breite: 2.48, hoehe: 1.15, breiteAussen: 2.55, gesamtlaenge: 10.0, laengeMax: 20.75, nutzlast: 14000, achsen: [-2.2, -0.9], haus: true, rungen: 4,
+    achslast: {
+      art: 'einzel',
+      vorn: { name: 'Vorderachse', x: 4.95, raeder: [4.95], leer: 5500, max: 8000 },
+      hinten: { name: 'Hinterachsen (Doppelachse)', x: -1.55, raeder: [-2.2, -0.9], leer: 3500, max: 19000 },
+    } },
+  { id: 'klein', name: 'Kleiner Lkw bis 7,5 t (6,2 m)', laenge: 6.2, breite: 2.4, hoehe: 1.0, breiteAussen: 2.5, gesamtlaenge: 8.3, laengeMax: 20.75, nutzlast: 3300, achsen: [-1.0], haus: true, rungen: 0,
+    achslast: {
+      art: 'einzel',
+      vorn: { name: 'Vorderachse', x: 4.2, raeder: [4.2], leer: 2400, max: 4300 },
+      hinten: { name: 'Hinterachse', x: -1.0, raeder: [-1.0], leer: 1800, max: 5600 },
+    } },
 ];
 
 export const LADEGUT = [

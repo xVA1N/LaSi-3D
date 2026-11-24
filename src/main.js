@@ -4,6 +4,7 @@ import { pruefe, fussabdruck, fugenReibung, rechenkraftDaN, kopfLage, ladereihen
 import { FAHRZEUGE, LADEGUT, HILFSMITTEL, GURTTYPEN, MATERIALIEN, beispiel } from './daten.js';
 import { bewegGruppe, vereinigung, anWand, verschiebe, abstandVorne, unterlage, setzeUnterlage, freierGurtX, UEBERSTAND_MAX } from './aktionen.js';
 import { pruefeUebermass, GRENZEN } from './uebermass.js';
+import { pruefeAchslasten, lastverteilungsplan } from './achslast.js';
 
 // ---------- Zustand ----------
 const SPEICHER = 'lasi3d-beladung';
@@ -11,6 +12,7 @@ let zustand = lade() ?? { fahrzeugId: 'sattel', ...beispiel('sattel') };
 let auswahl = null; // { art: 'objekt' | 'gurt', id }
 let ergebnis = null;
 let uebermass = null;
+let achs = null;
 let reihen = [];
 let ansicht = 'oben';
 try { ansicht = localStorage.getItem('lasi3d-ansicht') === '3d' ? '3d' : 'oben'; } catch { /* ohne Speicher: Draufsicht */ }
@@ -122,8 +124,8 @@ function baueFahrzeug() {
   lkw.add(kasten(2.2, hausH, B, mat(0xc9d2d8, { metalness: 0.2 }), L / 2 + 1.35, 0.6 + hausH / 2, 0));
   lkw.add(kasten(0.05, 0.9, B - 0.3, mat(0x1c2a36, { roughness: 0.2 }), L / 2 + 2.46, 0.6 + hausH * 0.68, 0));
   const radGeo = new THREE.CylinderGeometry(0.5, 0.5, 0.35, 24).rotateX(Math.PI / 2);
-  const achsen = [...f.achsen, L / 2 + 1.3];
-  if (!f.haus) achsen.push(L / 2 - 0.9); // Antriebsachse der Zugmaschine
+  const al = f.achslast;
+  const achsen = [al.vorn, al.hinten, al.antrieb, al.aggregat].filter(Boolean).flatMap((a) => a.raeder);
   for (const x of achsen) {
     for (const z of [-(B / 2 - 0.2), B / 2 - 0.2]) {
       const rad = new THREE.Mesh(radGeo, mat(0x161616));
@@ -343,6 +345,7 @@ function zeichne() {
     if (g.art === 'kopf') baueKopf(g, info, gew); else if (g.art === 'direkt') baueDirekt(g, info, gew); else baueGurt(g, info, gew);
   }
   baueReihen();
+  baueAchslast();
   baueUebermass();
   baueMarken();
   baueMini();
@@ -360,6 +363,27 @@ function baueReihen() {
     // farbiger Balken auf beiden Außenrahmen, damit die Reihe auch unter der Ladung sichtbar ist
     for (const seite of [-1, 1]) ladungGruppe.add(kasten(r.x1 - r.x0 - 0.06, 0.03, 0.07, mat(farbe), (r.x0 + r.x1) / 2, H + 0.015, seite * (B / 2 + 0.035)));
   }
+}
+
+// Schwerpunkt der Ladung und überladene Achsen (rot um die Räder)
+function baueAchslast() {
+  const { breite: B, hoehe: H } = fahrzeug();
+  const sp = achs.schwerpunkt;
+  if (sp.masse > 0) {
+    ladungGruppe.add(kasten(0.02, 0.6, 0.02, mat(0x1d2420), sp.x, H + 0.3, sp.z));
+    const scheibe = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.012, 32), mat(0xffffff));
+    scheibe.position.set(sp.x, H + 0.006, sp.z);
+    ladungGruppe.add(scheibe);
+    for (const w of [0, Math.PI / 2]) {
+      const viertel = new THREE.Mesh(new THREE.CylinderGeometry(0.161, 0.161, 0.014, 32, 1, false, w, Math.PI / 2), mat(0xd32f2f));
+      viertel.position.set(sp.x, H + 0.007, sp.z);
+      const gegen = viertel.clone();
+      gegen.rotation.y = Math.PI;
+      ladungGruppe.add(viertel, gegen);
+    }
+  }
+  const rot = mat(0xe53935, { transparent: true, opacity: 0.35, depthWrite: false });
+  for (const a of achs.achsen) if (!a.ok) for (const x of a.raeder) ladungGruppe.add(kasten(1.15, 1.15, B + 0.2, rot, x, 0.55, 0));
 }
 
 // Markierungen bei Übermaß: Fahne am Überstand, Maßlinie, rote Grenzflächen für Breite und Höhe
@@ -449,6 +473,8 @@ function baueMarken() {
     marke(uebermass.zuBreit ? 'warnung' : 'mass', `seitlich ${laenge(seitlich)} · Breite ${zahl(uebermass.breite, 2)} m`,
       new THREE.Vector3(teil.x, H + ergebnis.lage.get(teil.id).y + teil.h, rechts ? f.z1 : f.z0));
   }
+  if (achs.schwerpunkt.masse > 0) marke('mass', '⊕ Schwerpunkt', new THREE.Vector3(achs.schwerpunkt.x, H + 0.6, achs.schwerpunkt.z));
+  for (const a of achs.achsen) if (!a.ok) marke('warnung', `${a.name}: ${zahl(a.last / 1000, 1)} t`, new THREE.Vector3(a.x, 1.3, B / 2));
   if (uebermass.zuHoch) marke('warnung', `Höhe ${zahl(uebermass.hoehe, 2)} m`, new THREE.Vector3(0, GRENZEN.hoehe, 0));
   const o = gewaehltesObjekt();
   if (o) {
@@ -554,6 +580,7 @@ let geplant = false;
 function aktualisiere() {
   zustand.gurte = zustand.gurte.filter((g) => !g.ziel || objekt(g.ziel));
   ergebnis = pruefe({ ...zustand, flaeche: fahrzeug() });
+  achs = pruefeAchslasten({ objekte: zustand.objekte, fahrzeug: fahrzeug() });
   reihen = ladereihen(ergebnis.ergebnisse.map((e) => e.einheit));
   uebermass = pruefeUebermass({ objekte: zustand.objekte, lage: ergebnis.lage, fahrzeug: fahrzeug(), nutzlast: zustand.nutzlast });
   if (auswahl && !(gewaehltesObjekt() || gewaehlterGurt())) auswahl = null;
@@ -627,15 +654,43 @@ function gurtStatus(g) {
   return { ok: true, text: `α ≈ ${zahl(info.winkel, 0)}° · über ${info.getroffen.length} Einheit${info.getroffen.length === 1 ? '' : 'en'}${gekappt}` };
 }
 
+function achslastBlock() {
+  const f = fahrzeug(), L = f.laenge;
+  const nutzlast = uebermass.nutzlast;
+  const zeilen = achs.achsen.map((a) => `<tr><td>${esc(a.name)}</td><td class="${a.ok ? 'gut' : 'schlecht'}">${zahl(a.last / 1000, 2)} t</td><td>max. ${zahl(a.max / 1000, 1)} t</td></tr>`).join('');
+  const lenk = achs.schwerpunkt.masse > 0 ? `<tr><td>Anteil Lenkachse</td><td class="${achs.lenkanteil >= 0.2 ? 'gut' : 'schlecht'}">${zahl(achs.lenkanteil * 100, 0)} %</td><td>mind. 20 %</td></tr>` : '';
+  // Diagramm: waagerecht Abstand des Schwerpunkts von der Stirnwand, senkrecht Masse der Ladung
+  const W = 320, H = 150, li = 34, re = 10, ob = 12, un = 26;
+  const px = (abstand) => li + (abstand / L) * (W - li - re);
+  const py = (m) => ob + (1 - m / nutzlast) * (H - ob - un);
+  const plan = lastverteilungsplan(f, nutzlast);
+  const linie = plan.map((p, i) => `${i ? 'L' : 'M'}${px(p.abstand).toFixed(1)},${py(p.masse).toFixed(1)}`).join(' ');
+  const flaeche = `${linie} L${px(L)},${py(0)} L${px(0)},${py(0)} Z`;
+  const achsLinien = achs.achsen.flatMap((a) => a.raeder).filter((x) => x <= L / 2 && x >= -L / 2)
+    .map((x) => `<line x1="${px(L / 2 - x)}" x2="${px(L / 2 - x)}" y1="${ob}" y2="${H - un}" class="achse"/>`).join('');
+  const sp = achs.schwerpunkt;
+  const punkt = sp.masse > 0 ? `<circle cx="${px(Math.min(Math.max(L / 2 - sp.x, 0), L))}" cy="${py(Math.min(sp.masse, nutzlast * 1.05))}" r="5" class="${achs.ok && sp.masse <= nutzlast ? 'ok' : 'nein'}"/>` : '';
+  const svg = `<svg class="plan" viewBox="0 0 ${W} ${H}" role="img" aria-label="Lastverteilungsplan">
+    <path d="${flaeche}" class="erlaubt"/><path d="${linie}" class="grenze"/>${achsLinien}
+    <line x1="${li}" x2="${W - re}" y1="${H - un}" y2="${H - un}" class="achse-x"/>
+    <text x="${li}" y="${H - 8}">Stirnwand</text><text x="${W - re}" y="${H - 8}" text-anchor="end">${zahl(L, 1)} m</text>
+    <text x="${li - 4}" y="${ob + 4}" text-anchor="end">${zahl(nutzlast / 1000, 1)} t</text><text x="${li - 4}" y="${H - un}" text-anchor="end">0</text>
+    ${punkt}</svg>`;
+  return `<div class="masse"><b>Achslasten</b><table>${zeilen}${lenk}</table>
+    <div class="plan-titel">Lastverteilungsplan <span class="werte">· grün: erlaubte Masse je Lage des Schwerpunkts, Punkt: deine Ladung</span></div>${svg}
+    ${achs.meldungen.length ? `<ul class="meldungen">${achs.meldungen.map((m) => `<li class="schlecht">${esc(m.text)}</li>`).join('')}</ul>` : ''}
+    <p class="werte">Leergewichte und zulässige Achslasten sind Beispielwerte; maßgeblich sind Fahrzeugschein und Typenschild.</p></div>`;
+}
+
 function zeigeErgebnis() {
   const r = ergebnis;
   const offen = r.ergebnisse.filter((e) => !e.ok).length;
   const leer = r.ergebnisse.length === 0;
   const um = uebermass, umFehler = um.meldungen.filter((m) => m.stufe === 'fehler');
-  const alles = r.ok && um.ok;
+  const alles = r.ok && um.ok && achs.ok;
   $('status').textContent = leer ? 'Keine Ladung'
     : alles ? `✓ Ladung gesichert${um.meldungen.some((m) => m.stufe === 'pflicht') ? ' · Kennzeichnung nötig' : ''}`
-    : `✗ ${[r.hinweise.some((h) => h.art === 'gurt-mangel') ? 'Zurrmittel mangelhaft' : '', offen ? `${offen} nicht gesichert` : '', r.hinweise.some((h) => h.art === 'lose') ? 'lose Teile' : '', umFehler.length ? 'Übermaß' : '', ''].filter(Boolean).join(' · ') || 'Hinweise prüfen'}`;
+    : `✗ ${[r.hinweise.some((h) => h.art === 'gurt-mangel') ? 'Zurrmittel mangelhaft' : '', offen ? `${offen} nicht gesichert` : '', r.hinweise.some((h) => h.art === 'lose') ? 'lose Teile' : '', umFehler.length ? 'Übermaß' : '', achs.ok ? '' : 'Achslast'].filter(Boolean).join(' · ') || 'Hinweise prüfen'}`;
   $('status').className = `status ${leer ? '' : alles ? 'gut' : 'schlecht'}`;
   const zeile = (name, wert, grenze, ok) => `<tr><td>${name}</td><td class="${ok ? 'gut' : 'schlecht'}">${wert}</td><td>${grenze}</td></tr>`;
   const m2 = (v) => `${zahl(v, 2)} m`;
@@ -667,7 +722,7 @@ function zeigeErgebnis() {
         <tr><td>Kippen längs</td><td class="${kl.ok ? 'gut' : 'schlecht'}">${kl.ok ? 'standsicher' : 'kippt, anders sichern'}</td></tr>
       </table></div>`;
   }).join('');
-  $('ergebnis').innerHTML = `${masse}${meldungen ? `<ul class="meldungen">${meldungen}</ul>` : ''}${wand}${karten || '<p class="werte">Noch keine Ladung auf der Fläche.</p>'}`;
+  $('ergebnis').innerHTML = `${masse}${achslastBlock()}${meldungen ? `<ul class="meldungen">${meldungen}</ul>` : ''}${wand}${karten || '<p class="werte">Noch keine Ladung auf der Fläche.</p>'}`;
 }
 
 // ---------- Leiste am ausgewählten Teil ----------
@@ -1315,6 +1370,7 @@ setzeAnsicht(ansicht, true);
 window.lasi = {
   zustand: () => zustand, ergebnis: () => ergebnis, auswahl: () => auswahl, ansicht: () => ansicht,
   uebermass: () => uebermass,
+  achslasten: () => achs,
   obenSicht: () => ({ x: steuerOben.target.x, z: steuerOben.target.z, zoom: kameraOben.zoom, minZoom: steuerOben.minZoom }),
   // Werte eines Objekts direkt setzen (für die Tests)
   setze(id, werte) { Object.assign(objekt(id), werte); aendere(); },

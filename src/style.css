@@ -117,3 +117,10 @@ li.pflicht { color: #b26a00; }
 .marke.reihe { transform: translate(-100%, 0); font-size: 11px; font-weight: 700; color: #fff; padding: 2px 6px; border-radius: 6px; box-shadow: 0 1px 3px #0003; }
 .marke.reihe.r0 { background: #2f78b7; } .marke.reihe.r1 { background: #2e8a5c; }
 .reihe-nr { display: inline-block; font-size: .72rem; font-weight: 700; color: #fff; background: var(--knopf); border-radius: 6px; padding: 1px 6px; vertical-align: 1px; }
+
+.plan { width: 100%; height: auto; display: block; margin: 4px 0; }
+.plan .erlaubt { fill: #2f9d5533; } .plan .grenze { fill: none; stroke: #2f9d55; stroke-width: 2; }
+.plan .achse { stroke: var(--leise); stroke-dasharray: 3 3; stroke-width: 1; } .plan .achse-x { stroke: var(--leise); }
+.plan text { font-size: 10px; fill: var(--leise); }
+.plan circle.ok { fill: #1f6fb2; stroke: #fff; stroke-width: 2; } .plan circle.nein { fill: #d32f2f; stroke: #fff; stroke-width: 2; }
+.plan-titel { font-size: .82rem; font-weight: 600; margin-top: 8px; }
