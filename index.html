@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LaSi 3D – Ladungssicherung</title>
+  <link rel="stylesheet" href="./src/style.css">
+</head>
+<body>
+  <main class="layout">
+    <section id="szene" aria-label="3D-Ansicht der Ladefläche">
+      <div class="status" id="status" aria-live="polite"></div>
+    </section>
+    <aside class="panel">
+      <header>
+        <h1>LaSi 3D</h1>
+        <p class="unter">Ladung platzieren, sichern, nachrechnen</p>
+      </header>
+
+      <section class="block">
+        <label>Fahrzeug <select id="fahrzeug"></select></label>
+        <div class="knoepfe">
+          <button id="beispiel" type="button">Beispiel laden</button>
+          <button id="leeren" type="button" class="leise">Alles entfernen</button>
+        </div>
+      </section>
+
+      <section class="block">
+        <h2>Hinzufügen</h2>
+        <label>Ladegut <span class="zeile"><select id="ladegut"></select><button id="ladegut-neu" type="button">+</button></span></label>
+        <div class="knoepfe">
+          <button id="palette-neu" type="button">+ Europalette</button>
+          <button id="rhm-neu" type="button">+ Antirutschmatte</button>
+        </div>
+        <label>Zurrgurt (Niederzurren) <span class="zeile"><select id="gurttyp"></select><button id="gurt-neu" type="button">+</button></span></label>
+        <p class="tipp">Antippen wählt aus, Ziehen verschiebt. Auf eine Palette oder Matte gezogen, steht die Ladung darauf.</p>
+      </section>
+
+      <section class="block" id="auswahl" hidden></section>
+
+      <section class="block">
+        <h2>Prüfung</h2>
+        <div id="ergebnis"></div>
+      </section>
+
+      <p class="hinweis">Lernhilfe nach dem Verfahren der EN 12195-1 (Niederzurren, Formschluss an der Stirnwand, Kippen). Reibbeiwerte sind Richtwerte; Stapel werden mit dem kleinsten Reibbeiwert gerechnet. Im Einsatz gelten Norm, Zertifikate und Herstellerangaben.</p>
+    </aside>
+  </main>
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>
