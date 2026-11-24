@@ -45,8 +45,8 @@ pruefe(sicht2.zoom >= sicht2.minZoom - 1e-9 && Math.abs(sicht2.z - sicht0.z) < 1
 await seite.click('#beispiel'); await kurz();
 pruefe((await status()).includes('✓'), 'Beispiel Sattelauflieger ist gesichert');
 const reihenText = await seite.textContent('#marken');
-pruefe(['Reihe 1', 'Reihe 2', 'Reihe 5'].every((r) => reihenText.includes(r)) && !reihenText.includes('Reihe 6'), 'Ladereihen 1 bis 5 werden markiert');
-pruefe((await seite.textContent('#ergebnis')).includes('Reihe 1'), 'Prüfung nennt die Reihe');
+pruefe(['LR1', 'LR2', 'LR5'].every((r) => reihenText.includes(r)) && !reihenText.includes('LR6'), 'Ladereihen 1 bis 5 werden markiert');
+pruefe((await seite.textContent('#ergebnis')).includes('LR1'), 'Prüfung nennt die Reihe');
 
 // Ladegut über den Katalog
 await seite.click('#ladegut-neu');

@@ -425,7 +425,7 @@ function baueMarken() {
     }
   }
   // Schild in der vorderen rechten Ecke der Reihe, damit es die Namen in der Mitte nicht verdeckt
-  for (const r of reihen) marke(`reihe r${(r.nr - 1) % 2}`, `Reihe ${r.nr}`, new THREE.Vector3(r.x1 - 0.1, H, B / 2 - 0.05));
+  for (const r of reihen) marke(`reihe r${(r.nr - 1) % 2}`, `LR${r.nr}`, new THREE.Vector3(r.x1 - 0.1, H, B / 2 - 0.05));
   if (uebermass.ueberHinten > 0.005) {
     const z = Math.min(Math.max(uebermass.fahne?.z ?? 0, -B / 2), B / 2);
     marke(uebermass.ueberHinten > GRENZEN.kennzeichnungAb ? 'warnung' : 'mass', `Überstand ${laenge(uebermass.ueberHinten)}`, new THREE.Vector3(-L / 2 - uebermass.ueberHinten / 2, H, z));
@@ -644,7 +644,7 @@ function zeigeErgebnis() {
     const kq = e.kippen.seitlich, kl = e.kippen.laengs;
     const ersteLadung = e.einheit.mitglieder.find((o) => o.typ === 'ladung');
     return `<div class="einheit ${e.ok ? '' : 'nein'}" data-waehle="${ersteLadung.id}">
-      <b>${reihen.find((r) => r.ids.includes(e.id)) ? `<span class="reihe-nr">Reihe ${reihen.find((r) => r.ids.includes(e.id)).nr}</span> ` : ''}${esc(einheitName(e))}</b>
+      <b>${reihen.find((r) => r.ids.includes(e.id)) ? `<span class="reihe-nr">LR${reihen.find((r) => r.ids.includes(e.id)).nr}</span> ` : ''}${esc(einheitName(e))}</b>
       <span class="werte">${zahl(e.einheit.masse, 0)} kg · μ = ${zahl(e.einheit.mu)} · ${e.gurte.length} Gurt${e.gurte.length === 1 ? '' : 'e'}</span>
       <table>${zeilen}
         <tr><td>Kippen quer</td><td class="${kq.ok ? 'gut' : 'schlecht'}">${kq.brauch === 0 ? 'standsicher' : kq.ok ? 'durch Gurte gehalten' : 'kippt'}</td></tr>
@@ -665,7 +665,7 @@ function zeigeLeiste() {
   if (o) {
     status = objektStatus(o);
     const reihe = reihen.find((r) => r.ids.includes(einheitVon(o)?.id));
-    $('leiste-titel').textContent = `${reihe ? `Reihe ${reihe.nr} · ` : ''}${o.typ === 'rhm' ? o.name : `${o.name} · ${zahl(o.masse, 0)} kg`}`;
+    $('leiste-titel').textContent = `${reihe ? `LR${reihe.nr} · ` : ''}${o.typ === 'rhm' ? o.name : `${o.name} · ${zahl(o.masse, 0)} kg`}`;
     $('pad').classList.remove('nur-laengs');
     $('leiste-knoepfe').classList.toggle('vier', o.art === 'europalette');
     $('leiste-knoepfe').innerHTML = knopf('anwand', '⇧', 'An Wand') + knopf('drehen', '⟳', 'Drehen', o.form === 'zylinder' ? 'disabled' : '')
