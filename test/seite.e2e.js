@@ -105,8 +105,8 @@ await seite.click('[data-aktion="bearbeiten"]'); await kurz();
 await seite.click('[data-unterlage="palette-matte"]'); await kurz();
 const z = await lage();
 const unter = z.objekte.filter((o) => o.typ !== 'ladung' && Math.abs(o.x - (z.objekte.find((k) => k.id === kiste)).x) < 1e-6);
-pruefe(unter.length === 2, 'Palette + Matte werden unter die Kiste gelegt');
-pruefe(await seite.isVisible('[data-unterlage="palette-matte"].an'), 'Auswahl „Palette + Matte“ ist markiert');
+pruefe(unter.length === 2, 'Palette + RHM werden unter die Kiste gelegt');
+pruefe(await seite.isVisible('[data-unterlage="palette-matte"].an'), 'Auswahl „Palette + RHM“ ist markiert');
 await seite.click('[data-feld="masse"] [data-d="1"]'); await kurz();
 pruefe((await objektById(kiste)).masse === 850, 'Plus-Knopf erhöht die Masse');
 await seite.click('[data-blatt="fertig"]');
@@ -190,6 +190,26 @@ await seite.mouse.up(); await kurz();
 // der künstliche Finger hat keine echte Zeiger-ID; die Kamerasteuerung meldet das, auf echten Geräten nicht
 for (let i = fehler.length - 1; i >= 0; i--) if (fehler[i].includes('setPointerCapture')) fehler.splice(i, 1);
 pruefe(Math.abs(zwischendurch - x4) > 0.1 && Math.abs((await objektById(box)).x - x4) < 1e-9, 'Zweiter Finger bricht das Verschieben ab');
+
+// RHM: mit ausgewähltem Ladegut kommt es darunter, sonst an die nächste freie Stelle
+await seite.selectOption('#fahrzeug', 'sattel'); await seite.click('#beispiel'); await kurz();
+await seite.click('#ladegut-neu'); await seite.click('[data-ladegut="holzkiste"]'); await kurz();
+const rk = await seite.evaluate(() => window.lasi.auswahl().id);
+const vorRhm = (await lage()).objekte.length;
+await seite.click('#rhm-neu'); await kurz();
+let lz = await lage();
+const kisteR = lz.objekte.find((o) => o.id === rk), rhmNeu = lz.objekte.at(-1);
+pruefe(lz.objekte.length === vorRhm + 1 && rhmNeu.typ === 'rhm' && rhmNeu.x === kisteR.x && rhmNeu.z === kisteR.z, '+ RHM legt das RHM unter das ausgewählte Ladegut');
+pruefe((await seite.textContent(`[data-waehle="${rk}"]`)).includes('RHM darunter'), 'Prüfung zeigt „RHM darunter“');
+await seite.click('#rhm-neu'); await kurz();
+pruefe((await lage()).objekte.length === vorRhm + 1, 'Zweites + RHM legt kein doppeltes RHM darunter');
+await seite.click('[data-aktion="loeschen"]'); await kurz();
+await seite.mouse.click(5, 300); await kurz(); // Auswahl aufheben
+await seite.click('#rhm-neu'); await kurz();
+lz = await lage();
+const frei = lz.objekte.at(-1);
+pruefe(frei.typ === 'rhm' && frei.name === 'RHM' && !lz.objekte.some((o) => o !== frei && o.typ === 'rhm' && o.x === frei.x && o.z === frei.z), 'Ohne Auswahl kommt das RHM an eine freie Stelle');
+pruefe((await seite.textContent('#rhm-neu')).includes('+ RHM'), 'Knopf heißt „+ RHM“');
 
 // Diagonal- und Schrägzurren
 await seite.selectOption('#fahrzeug', 'sattel'); await seite.click('#beispiel'); await kurz();

@@ -1,5 +1,5 @@
 // Bearbeitungsschritte für die Bedienung: Gruppen verschieben, an die Wand schieben,
-// Unterlage (Palette/Matte) wechseln, Abstände und Platz für neue Gurte.
+// Unterlage (Palette/RHM) wechseln, Abstände und Platz für neue Gurte.
 // Ohne Browser, damit sie mit `npm test` geprüft werden können.
 
 import { fussabdruck } from './modell.js';
@@ -9,7 +9,7 @@ const traeger = (lage, o) => lage.get(o.id)?.traeger ?? null;
 const istHilfsmittel = (o) => o && o.typ !== 'ladung';
 
 /**
- * Was beim Verschieben mitgeht: Steht die Ladung auf Palette/Matte, die ganze Einheit
+ * Was beim Verschieben mitgeht: Steht die Ladung auf Palette/RHM, die ganze Einheit
  * ab der untersten Unterlage; steht sie auf anderer Ladung, nur sie selbst und was darauf steht.
  */
 export function bewegGruppe(objekte, lage, o) {
@@ -35,7 +35,7 @@ export function vereinigung(gruppe) {
 const verschiebeAlle = (gruppe, dx, dz) => { for (const a of gruppe) { a.x = runde(a.x + dx); a.z = runde(a.z + dz); } };
 const runde = (v) => Math.round(v * 1000) / 1000;
 
-/** Hindernisse vor einer Gruppe (gleiche Querlage, weiter vorne), Matten zählen nicht */
+/** Hindernisse vor einer Gruppe (gleiche Querlage, weiter vorne), RHM zählt nicht */
 function vorDerGruppe(objekte, gruppe, u) {
   const ids = new Set(gruppe.map((a) => a.id));
   return objekte
@@ -75,7 +75,7 @@ export function verschiebe(objekte, lage, o, dx, dz, flaeche) {
   verschiebeAlle(gruppe, kx, kz);
 }
 
-/** Unterlagen direkt unter einem Objekt (Palette, Matte) und ob sie nur dieses tragen */
+/** Unterlagen direkt unter einem Objekt (Palette, RHM) und ob sie nur dieses tragen */
 export function unterlage(objekte, lage, o) {
   const kette = [];
   let oben = o;

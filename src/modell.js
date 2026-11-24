@@ -8,7 +8,7 @@
 // - Ein Stapel (Palette mit Ladung, Ladung auf Ladung) wird als eine Ladeeinheit gerechnet,
 //   mit dem kleinsten Reibbeiwert aller Fugen im Stapel.
 // - Ein Gurt, der über mehrere Ladeeinheiten läuft, verteilt seine Wirkung gleichmäßig.
-// - Rutschhemmende Matten liegen direkt auf der Ladefläche.
+// - Rutschhemmendes Material (RHM) liegt direkt auf der Ladefläche.
 
 import { G, BEIWERTE_STRASSE, SICHERHEIT_NIEDERZURREN, K_FAKTOR } from './berechnung.js';
 
@@ -42,7 +42,7 @@ const ueberlappt = (a, b, eps = 1e-6) => a.x0 < b.x1 - eps && b.x0 < a.x1 - eps 
 
 /**
  * Stapelt die Objekte: jedes steht auf dem höchsten Objekt unter seiner Mitte.
- * Reihenfolge: Matten, dann Paletten, dann Ladung (in der Reihenfolge der Liste).
+ * Reihenfolge: RHM, dann Paletten, dann Ladung (in der Reihenfolge der Liste).
  * @returns {Map<string, {y:number, traeger:object|null}>}
  */
 export function stapeln(objekte) {

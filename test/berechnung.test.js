@@ -12,7 +12,7 @@ test('Niederzurren: 1200 kg Holzkiste auf Sperrholz, 90°, S_TF 250 daN', () => 
   assert.equal(r.massgebend, 'vorwaerts');
 });
 
-test('Niederzurren: Antirutschmatte hält seitlich und rückwärts allein', () => {
+test('Niederzurren: RHM hält seitlich und rückwärts allein', () => {
   const r = niederzurren({ masse: 1200, mu: 0.6, winkel: 90, stf: 250 });
   assert.equal(r.seitlich.anzahl, 0);
   assert.equal(r.rueckwaerts.anzahl, 0);
