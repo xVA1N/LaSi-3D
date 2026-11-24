@@ -163,25 +163,40 @@ let anklickbar = [];
 const FARBEN = { holzkiste: 0xc89b5f, gitterbox: 0x9aa3ab, ibc: 0xf2f2ee, fass: 0x1f5fa8, papierrolle: 0xd9c39a, kunststoffkisten: 0x2f7fd0, mauersteine: 0xd98a5a, europalette: 0xd2b48c, rhm: 0x23272a };
 const css = (farbe) => `#${farbe.toString(16).padStart(6, '0')}`;
 
+// Europalette liegend (dx × dz, 144 mm hoch): 5 Deckbretter und 3 Bodenbretter längs der 1,2-m-Seite,
+// 3 Querbretter, 9 Klötze
+function europalette(dx, dz) {
+  const holz = mat(FARBEN.europalette), klotz = mat(0xb8956a);
+  const lang = Math.max(dx, dz), kurz = Math.min(dx, dz), T = 0.022, H = 0.144;
+  const p = new THREE.Group();
+  const reihen = [-kurz / 2 + 0.0725, 0, kurz / 2 - 0.0725];
+  const spalten = [-lang / 2 + 0.0725, 0, lang / 2 - 0.0725];
+  for (const [z, w] of [[reihen[0], 0.145], [-kurz * 0.205, 0.1], [0, 0.145], [kurz * 0.205, 0.1], [reihen[2], 0.145]]) p.add(kasten(lang, T, w, holz, 0, H - T / 2, z));
+  for (const x of spalten) p.add(kasten(0.145, T, kurz, holz, x, H - 1.5 * T, 0));
+  for (const x of spalten) for (const z of reihen) p.add(kasten(0.145, H - 3 * T, z === 0 ? 0.145 : 0.1, klotz, x, T + (H - 3 * T) / 2, z));
+  for (const z of reihen) p.add(kasten(lang, T, z === 0 ? 0.145 : 0.1, holz, 0, T / 2, z));
+  if (dz <= dx) return p;
+  // Längsseite in z: in eigener Gruppe drehen, damit spätere Drehungen sich nicht überlagern
+  p.rotation.y = Math.PI / 2;
+  const huelle = new THREE.Group();
+  huelle.add(p);
+  return huelle;
+}
+
 function baueObjekt(o, y, status, gewaehlt, deckNachMinus = false) {
   const g = new THREE.Group();
   g.position.set(o.x, fahrzeug().hoehe + y, o.z);
   g.rotation.y = o.drehung === 90 ? Math.PI / 2 : 0;
   const { l, b, h } = o;
   if (o.art === 'europalette' && o.hochkant) {
-    // liegende Palette (Länge quer) um die Längsachse aufgestellt: Dicke in x, Breite in z, Höhe in y
-    const holz = mat(FARBEN.europalette);
-    const p = new THREE.Group();
-    p.add(kasten(h, 0.022, b, holz, 0, 0.133, 0));
-    for (const x of [-h / 2 + 0.0725, 0, h / 2 - 0.0725]) { p.add(kasten(0.145, 0.1, b, holz, x, 0.072, 0)); p.add(kasten(0.1, 0.022, b, holz, x, 0.011, 0)); }
+    // liegend gebaute Palette um die Längsachse aufgestellt: Dicke in x, Breite in z, Höhe in y
+    const p = europalette(h, b);
     // Deckseite zur Ladung, Klötze nach außen
     p.rotation.z = deckNachMinus ? Math.PI / 2 : -Math.PI / 2;
     p.position.set(deckNachMinus ? l / 2 : -l / 2, h / 2, 0);
     g.add(p);
   } else if (o.art === 'europalette') {
-    const holz = mat(FARBEN.europalette);
-    g.add(kasten(l, 0.022, b, holz, 0, h - 0.011, 0));
-    for (const z of [-b / 2 + 0.0725, 0, b / 2 - 0.0725]) { g.add(kasten(l, 0.1, 0.145, holz, 0, 0.072, z)); g.add(kasten(l, 0.022, 0.1, holz, 0, 0.011, z)); }
+    g.add(europalette(l, b));
   } else if (o.typ === 'rhm') {
     g.add(kasten(l, h, b, mat(FARBEN.rhm), 0, h / 2, 0));
   } else if (o.form === 'zylinder') {
