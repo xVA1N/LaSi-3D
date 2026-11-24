@@ -163,7 +163,7 @@ let anklickbar = [];
 const FARBEN = { holzkiste: 0xc89b5f, gitterbox: 0x9aa3ab, ibc: 0xf2f2ee, fass: 0x1f5fa8, papierrolle: 0xd9c39a, kunststoffkisten: 0x2f7fd0, mauersteine: 0xd98a5a, europalette: 0xd2b48c, rhm: 0x23272a };
 const css = (farbe) => `#${farbe.toString(16).padStart(6, '0')}`;
 
-function baueObjekt(o, y, status, gewaehlt) {
+function baueObjekt(o, y, status, gewaehlt, deckNachMinus = false) {
   const g = new THREE.Group();
   g.position.set(o.x, fahrzeug().hoehe + y, o.z);
   g.rotation.y = o.drehung === 90 ? Math.PI / 2 : 0;
@@ -174,8 +174,9 @@ function baueObjekt(o, y, status, gewaehlt) {
     const p = new THREE.Group();
     p.add(kasten(h, 0.022, b, holz, 0, 0.133, 0));
     for (const x of [-h / 2 + 0.0725, 0, h / 2 - 0.0725]) { p.add(kasten(0.145, 0.1, b, holz, x, 0.072, 0)); p.add(kasten(0.1, 0.022, b, holz, x, 0.011, 0)); }
-    p.rotation.z = Math.PI / 2;
-    p.position.set(l / 2, h / 2, 0);
+    // Deckseite zur Ladung, Klötze nach außen
+    p.rotation.z = deckNachMinus ? Math.PI / 2 : -Math.PI / 2;
+    p.position.set(deckNachMinus ? l / 2 : -l / 2, h / 2, 0);
     g.add(p);
   } else if (o.art === 'europalette') {
     const holz = mat(FARBEN.europalette);
@@ -249,7 +250,7 @@ function baueGurt(g, info, gewaehlt) {
 function baueKopf(g, info, gewaehlt) {
   if (!info?.getroffen.length) return;
   const { breite: B, hoehe: H } = fahrzeug();
-  const e = 0.014, aussen = info.richtung === 'rueckwaerts' ? -e : e;
+  const e = 0.03, richtung = info.richtung === 'rueckwaerts' ? -1 : 1, aussen = richtung * e;
   const v = [[info.ankerX, 0, -B / 2], [info.x + aussen, info.y, info.z0 - e], [info.x + aussen, info.y, info.z1 + e], [info.ankerX, 0, B / 2]]
     .map(([x, y, z]) => new THREE.Vector3(x, H + y, z));
   const material = gewaehlt ? mat(0xffc400, { emissive: 0x664400 }) : mat(0xe8901a, { roughness: 0.5 });
@@ -264,6 +265,23 @@ function baueKopf(g, info, gewaehlt) {
   }
   const r = v[0].clone().lerp(v[1], 0.4);
   ladungGruppe.add(kasten(0.13, 0.09, 0.06, mat(0x8a949c, { metalness: 0.6, roughness: 0.4 }), r.x, r.y, r.z));
+  // Kantenschoner: Winkelprofil an beiden senkrechten Kanten, um die die Schlinge läuft
+  const schoner = mat(0x2d6fb0, { roughness: 0.5 });
+  const arm = 0.13, dick = 0.015, hoch = 0.16, yS = H + info.y;
+  for (const [zEcke, nachInnen] of [[info.z0, 1], [info.z1, -1]]) {
+    const xAussen = info.x + richtung * (dick / 2 + 0.002);
+    ladungGruppe.add(kasten(dick, hoch, arm, schoner, xAussen, yS, zEcke + nachInnen * (arm / 2 - dick)));
+    ladungGruppe.add(kasten(arm, hoch, dick, schoner, info.x - richtung * (arm / 2 - dick), yS, zEcke - nachInnen * (dick / 2 + 0.002)));
+  }
+}
+
+// Hochkant-Palette: Deckseite zeigt zur angrenzenden Ladung (Ladung dahinter = Deck nach −x)
+function deckNachMinus(p) {
+  const f = fussabdruck(p);
+  const ueberlapp = (e) => e.einheit.f.z0 < f.z1 && f.z0 < e.einheit.f.z1;
+  const davor = ergebnis.ergebnisse.some((e) => ueberlapp(e) && Math.abs(e.einheit.f.x0 - f.x1) <= 0.05);
+  const dahinter = ergebnis.ergebnisse.some((e) => ueberlapp(e) && Math.abs(e.einheit.f.x1 - f.x0) <= 0.05);
+  return dahinter && !davor;
 }
 
 function zeichne() {
@@ -273,7 +291,7 @@ function zeichne() {
   for (const e of ergebnis.ergebnisse) for (const m of e.einheit.mitglieder) status.set(m.id, e.ok);
   for (const o of zustand.objekte) {
     const gew = auswahl?.art === 'objekt' && auswahl.id === o.id;
-    baueObjekt(o, ergebnis.lage.get(o.id).y, o.typ === 'ladung' ? status.get(o.id) : undefined, gew);
+    baueObjekt(o, ergebnis.lage.get(o.id).y, o.typ === 'ladung' ? status.get(o.id) : undefined, gew, o.hochkant && deckNachMinus(o));
   }
   for (const g of zustand.gurte) {
     const info = ergebnis.gurte.find((i) => i.id === g.id), gew = auswahl?.art === 'gurt' && auswahl.id === g.id;
@@ -999,6 +1017,13 @@ setzeAnsicht(ansicht, true);
 // für die Seitentests
 window.lasi = {
   zustand: () => zustand, ergebnis: () => ergebnis, auswahl: () => auswahl, ansicht: () => ansicht,
+  // Kamera nah an einen Punkt der Ladefläche (für Bilder in den Tests)
+  nah(x, z, abstand = 3) {
+    const H = fahrzeug().hoehe;
+    steuer3d.target.set(x, H + 0.5, z);
+    kamera3d.position.set(x - abstand, H + abstand * 0.8, z + abstand * 0.9);
+    steuer3d.update();
+  },
   // Bildschirmposition eines Punkts auf dem Objekt (Standard: Mitte der Oberseite)
   bildschirm(id, dx = 0, anteilHoehe = 1, dz = 0) {
     const o = objekt(id), r = renderer.domElement.getBoundingClientRect();
