@@ -53,6 +53,21 @@ export function abstandVorne(objekte, lage, o, flaeche) {
   return davor ? { abstand: davor.f.x0 - u.x1, bis: davor.a, stirnwand } : { abstand: stirnwand, bis: null, stirnwand };
 }
 
+/** Abstand der Gruppe zur linken und rechten Bordkante (negativ = Überstand) */
+export function abstandSeiten(objekte, lage, o, flaeche) {
+  const u = vereinigung(bewegGruppe(objekte, lage, o).gruppe);
+  return { links: u.z0 + flaeche.breite / 2, rechts: flaeche.breite / 2 - u.z1, u };
+}
+
+/** Schiebt die Gruppe quer in die Mitte der Ladefläche */
+export function zentriere(objekte, lage, o) {
+  const { gruppe } = bewegGruppe(objekte, lage, o);
+  const u = vereinigung(gruppe);
+  const dz = -(u.z0 + u.z1) / 2;
+  verschiebeAlle(gruppe, 0, dz);
+  return dz;
+}
+
 /** Schiebt die Gruppe nach vorne bis an die Stirnwand oder an die Ladung davor */
 export function anWand(objekte, lage, o, flaeche) {
   const { gruppe } = bewegGruppe(objekte, lage, o);

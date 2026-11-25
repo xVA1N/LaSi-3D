@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { pruefe, fussabdruck, fugenReibung, rechenkraftDaN, kopfLage, ladereihen, naechsterZurrpunkt, STIRNWAND_KRAFT_N, MU_RHM, ZURRPUNKT_AUSSEN } from './modell.js';
 import { FAHRZEUGE, LADEGUT, HILFSMITTEL, GURTTYPEN, MATERIALIEN, beispiel } from './daten.js';
-import { bewegGruppe, vereinigung, anWand, verschiebe, abstandVorne, unterlage, setzeUnterlage, freierGurtX, stellplaetze, platzFrei, stapelPlatz, UEBERSTAND_MAX } from './aktionen.js';
+import { bewegGruppe, vereinigung, anWand, abstandSeiten, zentriere, verschiebe, abstandVorne, unterlage, setzeUnterlage, freierGurtX, stellplaetze, platzFrei, stapelPlatz, UEBERSTAND_MAX } from './aktionen.js';
 import { pruefeUebermass, GRENZEN } from './uebermass.js';
 import { pruefeAchslasten, lastverteilungsplan } from './achslast.js';
 import { MANOEVER, startzustand, schritt, auswertung } from './fahrt.js';
@@ -751,6 +751,12 @@ function baueMarken() {
       ? `↑ ${laenge(a.abstand)} bis ${esc(davor.name.split(/[ ,]/)[0])}<br>${laenge(a.stirnwand)} bis Stirnwand`
       : `↑ ${laenge(a.stirnwand)} bis Stirnwand`;
     marke('abstand', text, new THREE.Vector3(u.x1, H + ergebnis.lage.get(o.id).y + o.h, (u.z0 + u.z1) / 2));
+    // Abstand zur linken und rechten Bordkante, mittig in der Lücke
+    const s = abstandSeiten(zustand.objekte, ergebnis.lage, o, fahrzeug());
+    const xm = (u.x0 + u.x1) / 2;
+    const seite = (v, z) => marke('seite', v >= 0 ? `↔ ${laenge(v)}` : `${laenge(-v)} über`, new THREE.Vector3(xm, H + 0.02, z));
+    seite(s.links, s.links >= 0 ? (-B / 2 + u.z0) / 2 : u.z0);
+    seite(s.rechts, s.rechts >= 0 ? (B / 2 + u.z1) / 2 : u.z1);
   }
   setzeMarken();
 }
@@ -1158,8 +1164,8 @@ function zeigeLeiste() {
     const reihe = reihen.find((r) => r.ids.includes(einheitVon(o)?.id));
     $('leiste-titel').textContent = `${reihe ? `LR${reihe.nr} · ` : ''}${o.typ === 'rhm' ? o.name : `${o.name} · ${zahl(o.masse, 0)} kg`}`;
     $('pad').classList.remove('nur-laengs');
-    $('leiste-knoepfe').classList.toggle('vier', o.art === 'europalette');
-    $('leiste-knoepfe').innerHTML = knopf('anwand', '⇧', 'An Wand') + knopf('drehen', '⟳', 'Drehen', o.form === 'zylinder' ? 'disabled' : '')
+    $('leiste-knoepfe').classList.add('vier');
+    $('leiste-knoepfe').innerHTML = knopf('anwand', '⇧', 'An Wand') + knopf('mitte', '⇹', 'Mitte') + knopf('drehen', '⟳', 'Drehen', o.form === 'zylinder' ? 'disabled' : '')
       + (o.art === 'europalette' ? knopf('hochkant', o.hochkant ? '⤓' : '⤒', o.hochkant ? 'Hinlegen' : 'Hochkant', traegtLast(o) ? 'disabled title="Erst die Ladung herunternehmen"' : '') : '')
       + knopf('gurt', '⇵', 'Gurt +', o.typ === 'rhm' ? 'disabled' : '') + knopf('bearbeiten', '✎', 'Bearbeiten') + knopf('kopieren', '⧉', 'Kopieren') + knopf('loeschen', '🗑', 'Löschen', 'class="rot"');
   } else {
@@ -1210,6 +1216,7 @@ function fuehreAus(aktion) {
   if (o) {
     const { wurzel, gruppe } = bewegGruppe(zustand.objekte, ergebnis.lage, o);
     if (aktion === 'anwand') anWand(zustand.objekte, ergebnis.lage, o, fahrzeug());
+    if (aktion === 'mitte') zentriere(zustand.objekte, ergebnis.lage, o);
     if (aktion === 'drehen') {
       // Quer- und Längsmaß tauschen; Teile auf der Einheit drehen mit
       for (const a of gruppe) {

@@ -107,3 +107,14 @@ test('Alle Plätze voll: EPAL stapeln sich am ersten Platz bis zur Höhengrenze'
   const mitLadung = [palette('p', 6.2, -0.8), kiste('k', 6.2, -0.8)];
   assert.equal(stapelPlatz([plaetze[0]], mitLadung, stapeln(mitLadung), 2.8), null);
 });
+
+test('Mitte: Gruppe quer zentrieren, Abstand zu beiden Bordkanten', async () => {
+  const { zentriere, abstandSeiten } = await import('../src/aktionen.js');
+  const o = [palette('p', 2, 0.6), kiste('k', 2, 0.6, { b: 0.8 })];
+  let s = abstandSeiten(o, stapeln(o), o[1], flaeche);
+  assert.ok(Math.abs(s.links - 1.44) < 1e-9 && Math.abs(s.rechts - 0.24) < 1e-9);
+  zentriere(o, stapeln(o), o[1]);
+  assert.deepEqual([o[0].z, o[1].z], [0, 0]);
+  s = abstandSeiten(o, stapeln(o), o[1], flaeche);
+  assert.ok(Math.abs(s.links - 0.84) < 1e-9 && Math.abs(s.rechts - 0.84) < 1e-9);
+});
