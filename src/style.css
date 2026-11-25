@@ -219,3 +219,30 @@ li.pflicht { color: #b26a00; }
 .skizze .m { font-weight: 700; font-style: italic; } .skizze .klein { font-size: 10px; } .skizze .k { font-size: 10px; fill: var(--leise); }
 .skizze figcaption { margin-top: 8px; font-size: .85rem; color: var(--leise); }
 .beispiel-knopf { margin-top: 10px; }
+
+/* Rechenweg mit Formeln und Bild */
+.rechenweg { margin-top: 16px; padding: 14px; background: var(--karte); border: 1px solid var(--rand); border-radius: 14px; }
+.rechenweg h2 { margin: 0 0 8px; font-size: 1rem; }
+.rechenweg h3 { margin: 14px 0 4px; font-size: .85rem; color: var(--leise); font-weight: 600; }
+.formel { font: 1.15rem/1.5 'Cambria Math', 'STIX Two Math', 'Times New Roman', serif; text-align: center; padding: 10px 6px; margin: 6px 0; background: var(--hg); border-radius: 10px; overflow-x: auto; }
+.formel.klein { font-size: .98rem; text-align: left; padding: 8px 10px; }
+.formel sub { font-size: .7em; }
+.formel b { font-family: system-ui, sans-serif; font-weight: 700; }
+.bruch { display: inline-flex; flex-direction: column; vertical-align: middle; text-align: center; margin: 0 3px; }
+.bruch > span { padding: 1px 4px; white-space: nowrap; }
+.bruch > span:first-child { border-bottom: 1.5px solid currentColor; }
+.bild { display: block; width: 100%; height: auto; margin: 4px 0 6px; color: var(--text); }
+.bild .boden { stroke: var(--leise); stroke-width: 3; }
+.bild .last { fill: #c8935a; stroke: #7a5a3d; stroke-width: 2; }
+.bild text { fill: currentColor; font-size: 11px; font-family: system-ui, sans-serif; }
+.bild .k { fill: var(--leise); } .bild .t { font-weight: 700; } .bild .m { font: italic 700 13px serif; }
+.bild line.traeg { stroke: #d9822b; stroke-width: 4; } .bild text.traeg, .traeg-spitze { fill: #d9822b; }
+.bild line.reib { stroke: #2f78b7; stroke-width: 4; } .bild text.reib, .reib-spitze { fill: #2f78b7; }
+.bild line.sich { stroke: #2e8a5c; stroke-width: 4; } .bild text.sich, .sich-spitze { fill: #2e8a5c; font-weight: 700; }
+.bild .gut-t { fill: var(--gut); font-weight: 700; }
+.bild .gurt { fill: none; stroke: #ffb300; stroke-width: 4; stroke-linejoin: round; }
+.bild .gurt-pf { stroke: #c62828; stroke-width: 2.5; } .gurt-spitze { fill: #c62828; } .bild .gurt-t { fill: #c62828; font-weight: 700; }
+.bild .winkel { fill: none; stroke: currentColor; stroke-width: 1.5; }
+.bild .anker { fill: var(--leise); } .bild .achse { stroke: var(--leise); stroke-dasharray: 4 3; }
+.formel.klein { white-space: nowrap; font-size: .92rem; }
+.bild .in { fill: #3a2410; font: italic 700 14px serif; }
