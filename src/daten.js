@@ -27,7 +27,7 @@ export const FAHRZEUGE = [
 ];
 
 export const LADEGUT = [
-  { art: 'holzkiste', name: 'Holzkiste', form: 'quader', material: 'holz', masse: 800, l: 1.2, b: 1.0, h: 1.0 },
+  { art: 'holzkiste', name: 'Holzkiste', form: 'quader', material: 'holz', masse: 800, l: 1.2, b: 0.8, h: 1.0 },
   { art: 'gitterbox', name: 'Gitterbox', form: 'quader', material: 'stahl', masse: 450, l: 1.24, b: 0.835, h: 0.97 },
   { art: 'ibc', name: 'IBC 1000 l, gefüllt', form: 'quader', material: 'stahl', masse: 1050, l: 1.2, b: 1.0, h: 1.16 },
   { art: 'fass', name: 'Fass 200 l', form: 'zylinder', material: 'stahl', masse: 220, l: 0.6, b: 0.6, h: 0.9 },
