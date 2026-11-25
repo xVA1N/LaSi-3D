@@ -47,6 +47,13 @@ pruefe((await status()).includes('✓'), 'Beispiel Sattelauflieger ist gesichert
 const reihenText = await seite.textContent('#marken');
 pruefe(['LR1', 'LR2', 'LR5'].every((r) => reihenText.includes(r)) && !reihenText.includes('LR6'), 'Ladereihen 1 bis 5 werden markiert');
 pruefe((await seite.textContent('#ergebnis')).includes('LR1'), 'Prüfung nennt die Reihe');
+await seite.click('[data-anzeige="reihen"]'); await kurz();
+pruefe(!(await seite.textContent('#marken')).includes('LR1'), 'Ladereihen lassen sich ausblenden');
+await seite.click('[data-anzeige="reihen"]'); await kurz();
+await seite.click('[data-anzeige="achsen"]'); await kurz();
+pruefe((await seite.textContent('#achsbox')) === '' && !(await seite.textContent('#marken')).includes('⊙'), 'Achslasten lassen sich ausblenden');
+await seite.click('[data-anzeige="achsen"]'); await kurz();
+pruefe((await seite.textContent('#achsbox')).includes('Achslasten') && (await seite.textContent('#marken')).includes('LR1'), 'und beides wieder einblenden');
 
 // Ladegut über den Katalog
 await seite.click('#ladegut-neu');
