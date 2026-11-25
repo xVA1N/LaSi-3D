@@ -274,7 +274,7 @@ welt.add(ladungGruppe);
 const objektGruppen = new Map(); // Objekt-ID → gezeichnete Gruppe (für die Fahrt-Simulation)
 let anklickbar = [];
 
-const FARBEN = { rohr: 0x6f7c86, holzkiste: 0xc89b5f, gitterbox: 0x9aa3ab, ibc: 0xf2f2ee, fass: 0x1f5fa8, papierrolle: 0xd9c39a, kunststoffkisten: 0x2f7fd0, mauersteine: 0xd98a5a, europalette: 0xd2b48c, rhm: 0x23272a };
+const FARBEN = { rohr: 0x6f7c86, holzkiste: 0xc89b5f, gitterbox: 0x9aa3ab, ibc: 0xf2f2ee, fass: 0x1f5fa8, papierrolle: 0xd9c39a, kunststoffkisten: 0x2f7fd0, mauersteine: 0xd98a5a, europalette: 0xd2b48c, rhm: 0x23272a, staupolster: 0xe9e4d6, sperrbalken: 0x9aa6b0 };
 const css = (farbe) => `#${farbe.toString(16).padStart(6, '0')}`;
 
 // Europalette liegend (dx × dz, 144 mm hoch): 5 Deckbretter und 3 Bodenbretter längs der 1,2-m-Seite,
@@ -313,6 +313,22 @@ function baueObjekt(o, y, status, gewaehlt, deckNachMinus = false) {
     g.add(europalette(l, b));
   } else if (o.typ === 'rhm') {
     g.add(kasten(l, h, b, mat(FARBEN.rhm), 0, h / 2, 0));
+  } else if (o.art === 'staupolster') {
+    // aufgeblasener Luftsack: weiches Kissen mit Steppnähten und Ventil
+    const kissen = new THREE.Mesh(new THREE.SphereGeometry(0.5, 24, 16), mat(FARBEN.staupolster, { roughness: 0.9 }));
+    kissen.scale.set(l, h, b);
+    kissen.position.y = h / 2;
+    kissen.castShadow = kissen.receiveShadow = true;
+    g.add(kissen);
+    g.add(kasten(l * 0.9, h * 0.96, b * 0.96, mat(FARBEN.staupolster, { roughness: 0.9 }), 0, h / 2, 0));
+    for (const z of [-b / 4, 0, b / 4]) g.add(kasten(l * 0.92, h * 0.9, 0.01, mat(0xc9c2ae), 0, h / 2, z));
+    g.add(kasten(l * 0.6, 0.06, 0.06, mat(0xd23c2c), l * 0.2, h * 0.75, b * 0.3));
+  } else if (o.art === 'sperrbalken') {
+    // Sperrbalken quer in den Seitenschienen, etwa auf halber Ladehöhe
+    const y = 0.9, metall = mat(FARBEN.sperrbalken, { metalness: 0.6, roughness: 0.35 });
+    g.add(kasten(0.06, 0.08, b - 0.04, metall, 0, y, 0));
+    for (const s of [-1, 1]) g.add(kasten(0.1, 0.16, 0.03, mat(0x3a4148, { metalness: 0.5 }), 0, y, s * (b / 2 - 0.015)));
+    g.add(kasten(0.06, 0.012, b - 0.04, mat(0x0, { transparent: true, opacity: 0.12, depthWrite: false }), 0, 0.006, 0)); // Schatten-/Greiffläche
   } else if (o.form === 'rohr') {
     // liegendes Rohr, Achse in Längsrichtung des Objekts; auf Wunsch auf Kanthölzern mit Keilen
     const r = b / 2, yc = h - r;
@@ -360,7 +376,7 @@ function baueObjekt(o, y, status, gewaehlt, deckNachMinus = false) {
     const geo = o.form === 'zylinder' ? new THREE.CylinderGeometry(l / 2 + 0.01, l / 2 + 0.01, h + 0.02, 24) : new THREE.BoxGeometry(l + 0.02, h + 0.02, b + 0.02);
     const umriss = new THREE.LineSegments(new THREE.EdgesGeometry(geo, 30), linie(gewaehlt ? 0xffc400 : status ? 0x2f9d55 : 0xd2382c));
     geo.dispose();
-    umriss.position.y = h / 2;
+    umriss.position.y = o.art === 'sperrbalken' ? 0.9 : h / 2;
     g.add(umriss);
   }
   if (gewaehlt) {
@@ -976,6 +992,7 @@ renderer.setAnimationLoop(() => {
 let geplant = false;
 function aktualisiere() {
   zustand.gurte = zustand.gurte.filter((g) => !g.ziel || objekt(g.ziel));
+  for (const o of zustand.objekte) if (o.art === 'sperrbalken') Object.assign(o, { z: 0, b: fahrzeug().breite, drehung: 0 });
   ergebnis = pruefe({ ...zustand, flaeche: flaeche() });
   achs = pruefeAchslasten({ objekte: zustand.objekte, fahrzeug: fahrzeug() });
   reihen = ladereihen(ergebnis.ergebnisse.map((e) => e.einheit));
@@ -1019,6 +1036,11 @@ function einheitName(e) {
 function objektStatus(o) {
   const e = ergebnis.ergebnisse.find((x) => x.einheit.mitglieder.some((m) => m.id === o.id));
   if (!e) {
+    if (o.art === 'staupolster') return ergebnis.hinweise.some((h) => h.art === 'lose' && h.id === o.id) ? { ok: false, text: '✗ nicht eingeklemmt: in eine Lücke stellen' } : { ok: true, text: '✓ füllt die Lücke (Formschluss)' };
+    if (o.art === 'sperrbalken') {
+      const last = (ergebnis.balkenLast.get(o.id) ?? 0) / 10;
+      return last > (o.lc ?? 800) + 1e-6 ? { ok: false, text: `✗ überlastet: ${zahl(last, 0)} von ${zahl(o.lc ?? 800, 0)} daN` } : { ok: true, text: last > 0 ? `✓ hält ${zahl(last, 0)} von ${zahl(o.lc ?? 800, 0)} daN` : 'hält nichts: direkt an die Ladung setzen' };
+    }
     if (ergebnis.hinweise.some((h) => h.art === 'lose' && h.id === o.id)) return { ok: false, text: '✗ steht ungesichert' };
     return { ok: true, text: o.hochkant ? '✓ gehalten (Füllmittel oder Lastverteiler)' : 'trägt keine Ladung' };
   }
@@ -1204,10 +1226,12 @@ function zeigeLeiste() {
     $('pad').classList.remove('nur-laengs');
     $('leiste-knoepfe').classList.add('vier');
     const band = bandPalette(zustand.objekte, ergebnis.lage, o);
-    $('leiste-knoepfe').innerHTML = knopf('anwand', '⇧', 'An Wand') + knopf('mitte', '⇹', 'Mitte') + knopf('drehen', '⟳', 'Drehen', o.form === 'zylinder' ? 'disabled' : '')
+    if (o.typ === 'fuell') $('leiste-knoepfe').innerHTML = (o.art === 'staupolster' ? knopf('anwand', '⇧', 'An Wand') + knopf('mitte', '⇹', 'Mitte') : '')
+      + knopf('bearbeiten', '✎', 'Bearbeiten') + knopf('kopieren', '⧉', 'Kopieren') + knopf('loeschen', '🗑', 'Löschen', 'class="rot"');
+    else $('leiste-knoepfe').innerHTML = knopf('anwand', '⇧', 'An Wand') + knopf('mitte', '⇹', 'Mitte') + knopf('drehen', '⟳', 'Drehen', o.form === 'zylinder' || o.art === 'sperrbalken' ? 'disabled' : '')
       + (band ? knopf('verband', '▥', band.verbaendert ? 'Band lösen' : 'Verbändern', band.verbaendert ? 'class="an"' : '')
         : o.art === 'europalette' ? knopf('hochkant', o.hochkant ? '⤓' : '⤒', o.hochkant ? 'Hinlegen' : 'Hochkant', traegtLast(o) ? 'disabled title="Erst die Ladung herunternehmen"' : '') : '')
-      + knopf('gurt', '⇵', 'Gurt +', o.typ === 'rhm' ? 'disabled' : '') + knopf('bearbeiten', '✎', 'Bearbeiten') + knopf('kopieren', '⧉', 'Kopieren') + knopf('loeschen', '🗑', 'Löschen', 'class="rot"');
+      + knopf('gurt', '⇵', 'Gurt +', o.typ === 'rhm' || o.typ === 'fuell' ? 'disabled' : '') + knopf('bearbeiten', '✎', 'Bearbeiten') + knopf('kopieren', '⧉', 'Kopieren') + knopf('loeschen', '🗑', 'Löschen', 'class="rot"');
   } else {
     status = gurtStatus(g);
     $('leiste-titel').textContent = g.art === 'kopf' ? `Kopfschlinge ${SEITE[g.seite]} · LC ${zahl(g.lc, 0)} daN`
@@ -1347,13 +1371,13 @@ function oeffneObjektBlatt() {
   const masze = o.form === 'rohr'
     ? feld('Maße in m (Länge · Durchmesser)', `<div class="drei" style="grid-template-columns:1fr 1fr">${stepper('l', o.l, { ...m, schritt: 0.5, max: 18 })}${stepper('rohrd', o.b, m)}</div>`)
       + feld('Lagerung', `<div class="chips"><button type="button" data-keile class="${o.keile ? 'an' : ''}">auf Kanthölzern mit Keilen</button></div><p class="werte">${o.keile ? 'Keile verhindern das Rollen.' : 'Ohne Keile rollt das Rohr quer zu seiner Achse: dann hält nur Formschluss oder eine Zurrung, z. B. Buchtlashing.'}</p>`)
-    : o.hochkant ? '' : zyl
+    : o.hochkant || o.art === 'sperrbalken' ? '' : zyl
     ? feld('Maße in m (Durchmesser · Höhe)', `<div class="drei" style="grid-template-columns:1fr 1fr">${stepper('durchmesser', o.l, m)}${stepper('h', o.h, m)}</div>`)
     : o.typ === 'rhm'
       ? feld('Maße in m (Länge · Breite)', `<div class="drei" style="grid-template-columns:1fr 1fr">${stepper('l', o.l, m)}${stepper('b', o.b, m)}</div>`)
       : feld('Maße in m (Länge · Breite · Höhe)', `<div class="drei">${stepper('l', o.l, m)}${stepper('b', o.b, m)}${stepper('h', o.h, { ...m, min: 0.02 })}</div>`);
   let stehtAuf = '';
-  if (o.typ !== 'rhm' && !o.hochkant) {
+  if (o.typ !== 'rhm' && o.typ !== 'fuell' && !o.hochkant) {
     const u = unterlage(zustand.objekte, ergebnis.lage, o);
     const wahl = o.typ === 'ladung'
       ? [['flaeche', 'Ladefläche'], ['palette', 'EPAL'], ['matte', 'RHM'], ['palette-matte', 'EPAL + RHM']]
@@ -1363,7 +1387,9 @@ function oeffneObjektBlatt() {
     stehtAuf = feld(`Steht auf <span class="werte">· μ = ${zahl(fugenReibung(o, ergebnis.lage.get(o.id).traeger))}</span>`, `<div class="chips">${wahl.map(([k, t]) => `<button type="button" data-unterlage="${k}" class="${u.art === k ? 'an' : ''}" ${gesperrt ? 'disabled' : ''}>${t}</button>`).join('')}</div>${notiz}`);
   }
   let mehr = '';
-  if (o.typ !== 'rhm' && !o.hochkant) {
+  if (o.art === 'sperrbalken') mehr = feld('Zulässige Kraft LC', stepper('lc', o.lc ?? 800, { schritt: 50, min: 100, max: 5000, einheit: 'daN', nk: 0 })) + '<p class="werte">Steht auf dem Etikett bzw. in der Herstellerangabe. Der Balken sitzt in den Seitenschienen über die ganze Breite.</p>';
+  else if (o.art === 'staupolster') mehr = '<p class="werte">Staupolster in die Lücke stellen (Stirnwand, Ladung oder Sperrbalken auf beiden Seiten). Länge = Breite der Lücke, übliche Staupolster füllen bis etwa 30 cm.</p>';
+  else if (o.typ !== 'rhm' && !o.hochkant) {
     const auto = fugenReibung({ ...o, mu: 0 }, ergebnis.lage.get(o.id).traeger);
     const material = o.typ === 'ladung'
       ? `<label>Material der Unterseite<select data-feld="material">${Object.entries(MATERIALIEN).map(([k, n]) => `<option value="${k}" ${k === o.material ? 'selected' : ''}>${n}</option>`).join('')}</select></label>`
@@ -1689,6 +1715,12 @@ blattInhalt.addEventListener('click', (ev) => {
     }
   } else if (el.dataset.fahrt) {
     starteFahrt(el.dataset.fahrt);
+  } else if (el.dataset.hilfsmittel) {
+    schliesseBlatt();
+    const art = el.dataset.hilfsmittel;
+    if (art === 'europalette') $('palette-neu').click();
+    else if (art === 'rhm') $('rhm-neu').click();
+    else neuesFuellmittel(art);
   } else if (el.dataset.ladegut) {
     schliesseBlatt();
     neuesObjekt(LADEGUT.find((v) => v.art === el.dataset.ladegut));
@@ -1709,6 +1741,42 @@ function oeffneKatalog() {
     <div class="katalog">${LADEGUT.map((v) => `<button type="button" data-ladegut="${v.art}"><i style="background:${css(FARBEN[v.art])}"></i><span>${esc(v.name)}<small>${zahl(v.masse, 0)} kg · ${v.form === 'zylinder' ? `Ø ${zahl(v.l)} m` : `${zahl(v.l)} × ${zahl(v.b)} m`}</small></span></button>`).join('')}</div>
     <p class="werte">${gewaehltesObjekt()?.typ === 'palette' || gewaehltesObjekt()?.typ === 'rhm' ? 'Kommt auf die ausgewählte EPAL bzw. RHM.' : 'Kommt an die nächste freie Stelle.'}</p>
     ${fuss(false)}`);
+}
+
+function oeffneHilfsmittel() {
+  const sel = gewaehltesObjekt();
+  const liste = HILFSMITTEL.map((v) => `<button type="button" data-hilfsmittel="${v.art}"><i style="background:${css(FARBEN[v.art])}"></i><span>${esc(v.name)}<small>${esc(v.info ?? (v.art === 'rhm' ? `rutschhemmend, μ = ${zahl(MU_RHM)}` : 'Europalette 1,2 × 0,8 m'))}</small></span></button>`).join('');
+  oeffneBlatt(`<h3 id="blatt-titel">Hilfsmittel hinzufügen</h3>
+    <div class="katalog" style="grid-template-columns:1fr">${liste}</div>
+    <p class="werte">${sel && sel.typ !== 'rhm' && sel.typ !== 'fuell' ? 'Staupolster und Sperrbalken kommen direkt hinter die ausgewählte Ladung.' : 'Tipp: erst Ladung antippen, dann kommen Staupolster und Sperrbalken direkt dahinter.'}</p>
+    ${fuss(false)}`);
+}
+// Füllmittel direkt hinter die ausgewählte Ladung setzen, sonst an eine freie Stelle
+function neuesFuellmittel(art) {
+  const v = HILFSMITTEL.find((h) => h.art === art);
+  const sel = gewaehltesObjekt();
+  const o = { ...v, id: neueId('o'), drehung: 0, mu: 0, x: 0, z: 0 };
+  delete o.info;
+  if (art === 'sperrbalken') o.b = fahrzeug().breite;
+  if (sel && sel.typ !== 'rhm' && sel.typ !== 'fuell') {
+    const u = vereinigung(bewegGruppe(zustand.objekte, ergebnis.lage, sel).gruppe);
+    o.x = Math.round((u.x0 - o.l / 2) * 1000) / 1000;
+    // Staupolster füllt bevorzugt eine Lücke vor der Ladung (bis 40 cm)
+    const vor = abstandVorne(zustand.objekte, ergebnis.lage, sel, fahrzeug());
+    if (art === 'staupolster' && vor.abstand > 0.03 && vor.abstand <= 0.4) {
+      o.l = Math.round(vor.abstand * 1000) / 1000;
+      o.x = Math.round((u.x1 + vor.abstand / 2) * 1000) / 1000;
+    }
+    o.z = art === 'sperrbalken' ? 0 : Math.round(((u.z0 + u.z1) / 2) * 1000) / 1000;
+    if (art === 'staupolster') o.b = Math.min(1.2, u.z1 - u.z0);
+  } else {
+    const p = freieStelle(o.l, o.b) ?? { x: 0, z: 0 };
+    o.x = p.x; o.z = art === 'sperrbalken' ? 0 : p.z;
+  }
+  zustand.objekte.push(o);
+  auswahl = { art: 'objekt', id: o.id };
+  aendere();
+  zeigeImBild(o.x);
 }
 
 // ---------- Hinzufügen ----------
@@ -1930,6 +1998,7 @@ $('nutzlast').addEventListener('input', () => { const v = +$('nutzlast').value; 
 zeigeNutzlast();
 zeigeZurrpunkt();
 $('ladegut-neu').addEventListener('click', oeffneKatalog);
+$('hilfsmittel-neu').addEventListener('click', oeffneHilfsmittel);
 $('fahrt-knopf').addEventListener('click', oeffneFahrtWahl);
 // Augen-Knopf oben: Menü mit den Anzeige-Schaltern
 $('anzeige-knopf').addEventListener('click', (ev) => {

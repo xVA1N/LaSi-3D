@@ -252,3 +252,4 @@ li.pflicht { color: #b26a00; }
 .bild .f100 { fill: #7cc96a99; } .bild .f70 { fill: #f2cf5b99; } .bild .f50 { fill: #f0964a99; }
 .bild .oese { fill: none; stroke: currentColor; stroke-width: 3; }
 .bild line.zug { stroke: currentColor; stroke-width: 3; } .dunkel-spitze { fill: currentColor; }
+.icons button:disabled { opacity: .4; }

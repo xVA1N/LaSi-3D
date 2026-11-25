@@ -27,7 +27,7 @@ export const REIBWERTE = {
 export const MU_RHM = 0.6;
 export const MU_LADUNG_AUF_LADUNG = 0.3;
 
-const RANG = { rhm: 0, palette: 1, ladung: 2 };
+const RANG = { rhm: 0, fuell: 1, palette: 1, ladung: 2 };
 
 /** Maße in x- und z-Richtung je nach Drehung */
 export function fussabdruck(o) {
@@ -51,10 +51,10 @@ export function stapeln(objekte) {
   const platziert = [];
   for (const [o] of reihenfolge) {
     let y = 0, traeger = null;
-    if (o.typ !== 'rhm') {
+    if (o.typ !== 'rhm' && o.typ !== 'fuell') {
       for (const s of platziert) {
         const top = lage.get(s.id).y + s.h;
-        if (!s.hochkant && enthaelt(fussabdruck(s), o.x, o.z) && top > y - 1e-9) { y = top; traeger = s; }
+        if (!s.hochkant && s.typ !== 'fuell' && enthaelt(fussabdruck(s), o.x, o.z) && top > y - 1e-9) { y = top; traeger = s; }
       }
     }
     lage.set(o.id, { y, traeger });
@@ -300,7 +300,7 @@ export function freiraum(objekte, lage, einheit, flaeche, seite) {
 export function gurtKollision(punkte, objekte, lage, ausgenommen) {
   const rand = 0.02; // Berühren ist erlaubt
   for (const o of objekte) {
-    if (o.typ === 'rhm' || ausgenommen.has(o.id)) continue;
+    if (o.typ === 'rhm' || o.art === 'sperrbalken' || ausgenommen.has(o.id)) continue;
     const f = fussabdruck(o), y = lage.get(o.id)?.y ?? 0;
     const q = { x0: f.x0 + rand, x1: f.x1 - rand, y0: y + rand, y1: y + o.h - rand, z0: f.z0 + rand, z1: f.z1 - rand };
     if (q.y1 <= q.y0) continue;
@@ -465,20 +465,34 @@ export function pruefe({ objekte, gurte, flaeche }) {
   // betroffene Gurte als mangelhaft markieren (blinken im Bild)
   for (const h of hinweise) if (h.art === 'zurrpunkt') for (const id of h.ids) { const i = gurtInfo.find((x) => x.id === id); if (i && !i.mangel) i.mangel = h.text; }
 
-  // Formschluss nach vorne: an der Stirnwand oder an etwas, das selbst formschlüssig steht
-  // (andere Einheit oder hochkant stehende Palette als Füllmittel)
-  const vorne = new Set();
-  const glieder = [...einheiten.map((e) => ({ id: e.id, f: e.f })), ...verteiler.map((v) => ({ id: v.id, f: fussabdruck(v) }))];
-  let geaendert = true;
-  while (geaendert) {
-    geaendert = false;
-    for (const e of glieder) {
-      if (vorne.has(e.id)) continue;
-      const anWand = L / 2 - e.f.x1 <= ABSTAND_FORMSCHLUSS;
-      const anNachbar = glieder.some((n) => vorne.has(n.id) && n.f.x0 - e.f.x1 >= -0.01 && n.f.x0 - e.f.x1 <= ABSTAND_FORMSCHLUSS && e.f.z0 < n.f.z1 && n.f.z0 < e.f.z1);
-      if (anWand || anNachbar) { vorne.add(e.id); geaendert = true; }
+  // Formschluss: nach vorne an der Stirnwand, in beide Richtungen an einem Sperrbalken, oder an etwas,
+  // das selbst formschlüssig steht (andere Einheit, hochkant stehende EPAL oder Staupolster als Füllmittel).
+  // Jedes Glied merkt sich, an welchem Anschlag (Stirnwand oder Sperrbalken) es am Ende hängt.
+  const staupolster = objekte.filter((o) => o.art === 'staupolster');
+  const sperrbalken = objekte.filter((o) => o.art === 'sperrbalken');
+  const glieder = [...einheiten.map((e) => ({ id: e.id, f: e.f })), ...verteiler.map((v) => ({ id: v.id, f: fussabdruck(v) })), ...staupolster.map((v) => ({ id: v.id, f: fussabdruck(v) }))];
+  const luecke = (d) => d >= -0.01 && d <= ABSTAND_FORMSCHLUSS;
+  const quer = (a, b) => a.z0 < b.z1 && b.z0 < a.z1;
+  const kette = (nachVorne) => {
+    const anschlag = new Map();
+    let weiter = true;
+    while (weiter) {
+      weiter = false;
+      for (const e of glieder) {
+        if (anschlag.has(e.id)) continue;
+        let a = null;
+        if (nachVorne && luecke(L / 2 - e.f.x1)) a = 'stirnwand';
+        const balken = sperrbalken.find((b) => { const fb = fussabdruck(b); return quer(e.f, fb) && luecke(nachVorne ? fb.x0 - e.f.x1 : e.f.x0 - fb.x1); });
+        if (!a && balken) a = balken.id;
+        const n = !a && glieder.find((n) => anschlag.has(n.id) && quer(e.f, n.f) && luecke(nachVorne ? n.f.x0 - e.f.x1 : e.f.x0 - n.f.x1));
+        if (n) a = anschlag.get(n.id);
+        if (a) { anschlag.set(e.id, a); weiter = true; }
+      }
     }
-  }
+    return anschlag;
+  };
+  const vorne = kette(true), hinten = kette(false);
+  const balkenLast = new Map();
 
   let stirnwandLast = 0;
   const ergebnisse = einheiten.map((e) => {
@@ -490,8 +504,11 @@ export function pruefe({ objekte, gurte, flaeche }) {
       const rollt = e.rollt.includes(r);
       const mu = rollt ? 0 : e.mu, reib = rollt ? 0 : b.reib;
       const brauch = Math.max(0, (c - mu * cz) * e.masse * G * SICHERHEIT_NIEDERZURREN[r]);
-      const formschluss = r === 'vorwaerts' && vorne.has(e.id);
-      if (formschluss) stirnwandLast += Math.max(0, (c - mu * cz) * e.masse * G);
+      const anschlag = r === 'vorwaerts' ? vorne.get(e.id) : r === 'rueckwaerts' ? hinten.get(e.id) : null;
+      const formschluss = !!anschlag;
+      const last = Math.max(0, (c - mu * cz) * e.masse * G);
+      if (anschlag === 'stirnwand') stirnwandLast += last;
+      else if (anschlag) balkenLast.set(anschlag, (balkenLast.get(anschlag) ?? 0) + last);
       const d = { brauch, hat: reib, formschluss, rollt, methode: 'nieder', ok: formschluss || brauch <= reib + 1e-6, auslastung: brauch === 0 ? 0 : reib > 0 ? brauch / reib : Infinity };
       // Direktzurren (Kopfschlinge, Diagonal-, Schrägzurren): μ mit f_μ abgemindert, gerechnet mit LC.
       // Direktzurrungen werden addiert, mit Niederzurren nicht; es zählt das günstigere Verfahren.
@@ -518,7 +535,7 @@ export function pruefe({ objekte, gurte, flaeche }) {
       seitlich: { ok: kippBrauch <= kippHat + 1e-6, brauch: Math.max(0, kippBrauch), hat: kippHat },
       laengs: {
         ok: (vorne.has(e.id) || b.kopf.vorwaerts > 0 || vorKipp <= b.moment.vorwaerts + 1e-6)
-          && (b.kopf.rueckwaerts > 0 || rueckKipp <= b.moment.rueckwaerts + 1e-6),
+          && (hinten.has(e.id) || b.kopf.rueckwaerts > 0 || rueckKipp <= b.moment.rueckwaerts + 1e-6),
       },
     };
     // liegende Rohre kippen nicht, sie rollen (oben bei den Richtungen gerechnet)
@@ -529,10 +546,23 @@ export function pruefe({ objekte, gurte, flaeche }) {
 
   // Hochkant-Paletten sind nur gehalten als Füllmittel (Formschluss) oder als Lastverteiler einer Kopfschlinge
   for (const v of verteiler) {
-    const gehalten = vorne.has(v.id) || gurtInfo.some((i) => !i.mangel && i.lastverteiler?.id === v.id);
+    const gehalten = vorne.has(v.id) || hinten.has(v.id) || gurtInfo.some((i) => !i.mangel && i.lastverteiler?.id === v.id);
     if (!gehalten) hinweise.push({ art: 'lose', id: v.id, text: 'Hochkant stehende Palette ist nicht gesichert: als Füllmittel vor die Ladung oder als Lastverteiler in eine Kopfschlinge stellen.' });
   }
 
+  // Staupolster müssen zwischen zwei Teilen (oder Teil und Stirnwand/Sperrbalken) eingeklemmt sein
+  for (const p of staupolster) {
+    const f = fussabdruck(p);
+    const andere = [...glieder.filter((g) => g.id !== p.id).map((g) => g.f), ...sperrbalken.map(fussabdruck)];
+    const davor = luecke(L / 2 - f.x1) || andere.some((n) => quer(f, n) && luecke(n.x0 - f.x1));
+    const dahinter = andere.some((n) => quer(f, n) && luecke(f.x0 - n.x1));
+    if (!(davor && dahinter)) hinweise.push({ art: 'lose', id: p.id, text: 'Staupolster ist nicht eingeklemmt: in eine Lücke zwischen Ladung, Stirnwand oder Sperrbalken stellen.' });
+  }
+  // Sperrbalken halten nur bis zu ihrer zulässigen Kraft (LC)
+  for (const b of sperrbalken) {
+    const last = balkenLast.get(b.id) ?? 0;
+    if (last > (b.lc ?? 800) * 10 + 1e-6) hinweise.push({ art: 'sperrbalken', id: b.id, text: `Sperrbalken überlastet: ${Math.round(last / 10)} daN, zulässig ${b.lc ?? 800} daN. Weiteren Sperrbalken setzen oder zusätzlich zurren.` });
+  }
   if (stirnwandLast > STIRNWAND_KRAFT_N) hinweise.push({ art: 'stirnwand', text: `Last auf die Stirnwand ${Math.round(stirnwandLast / 10)} daN, zulässig sind höchstens 5000 daN.` });
   for (let i = 0; i < einheiten.length; i++) {
     for (let j = i + 1; j < einheiten.length; j++) {
@@ -540,7 +570,7 @@ export function pruefe({ objekte, gurte, flaeche }) {
     }
   }
 
-  return { ergebnisse, gurte: gurtInfo, zurrpunkte: zurrpunktInfo, lage, stirnwandLast, hinweise, ok: ergebnisse.every((e) => e.ok) && !hinweise.some((h) => h.art !== 'gurt') };
+  return { ergebnisse, gurte: gurtInfo, zurrpunkte: zurrpunktInfo, lage, stirnwandLast, balkenLast, hinweise, ok: ergebnisse.every((e) => e.ok) && !hinweise.some((h) => h.art !== 'gurt') };
 }
 
 /**

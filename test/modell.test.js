@@ -356,3 +356,27 @@ test('Kopfschlinge ohne Platz dahinter ist mangelhaft (auch bei runder Ladung)',
   assert.match(p({ objekte: [kiste, rolle(-1.2)], gurte: [g], flaeche }).gurte[0].mangel, /Papierrolle steht direkt dahinter/);
   assert.equal(p({ objekte: [kiste, rolle(-1.5)], gurte: [g], flaeche }).gurte[0].mangel, undefined);
 });
+
+test('Sperrbalken hält rückwärts bis LC, Staupolster gibt Formschluss weiter', async () => {
+  const { pruefe: p } = await import('../src/modell.js');
+  const { HILFSMITTEL } = await import('../src/daten.js');
+  const v = (art, mehr) => ({ ...HILFSMITTEL.find((h) => h.art === art), drehung: 0, z: 0, ...mehr });
+  const kiste = (id, x, masse = 500) => ({ id, typ: 'ladung', name: 'Kiste', material: 'holz', masse, l: 1.2, b: 1.0, h: 1, x, z: 0, drehung: 0 });
+  // Kiste an der Stirnwand (6,2), Sperrbalken direkt dahinter
+  const ohne = p({ objekte: [kiste('k', 6.2)], gurte: [], flaeche });
+  assert.equal(ohne.ergebnisse[0].richtungen.rueckwaerts.ok, false);
+  const mit = p({ objekte: [kiste('k', 6.2), v('sperrbalken', { id: 's', x: 5.56 })], gurte: [], flaeche });
+  assert.equal(mit.ergebnisse[0].richtungen.rueckwaerts.formschluss, true);
+  assert.equal(mit.ergebnisse[0].richtungen.rueckwaerts.ok, true); // seitlich bleibt offen
+  // schwere Kiste: (0,5 − 0,45) · 20 t · g ≈ 981 daN > 800 daN
+  const schwer = p({ objekte: [kiste('k', 6.2, 20000), v('sperrbalken', { id: 's', x: 5.56 })], gurte: [], flaeche });
+  assert.ok(schwer.hinweise.some((h) => h.art === 'sperrbalken'));
+  // Lücke 0,2 m zur Stirnwand: ohne Staupolster kein Formschluss, mit Staupolster schon
+  const luecke = p({ objekte: [kiste('k', 6.0)], gurte: [], flaeche });
+  assert.equal(luecke.ergebnisse[0].richtungen.vorwaerts.formschluss, false);
+  const polster = p({ objekte: [kiste('k', 6.0), v('staupolster', { id: 'p', x: 6.7 })], gurte: [], flaeche });
+  assert.equal(polster.ergebnisse[0].richtungen.vorwaerts.formschluss, true);
+  assert.ok(!polster.hinweise.some((h) => h.art === 'lose'));
+  // frei stehendes Staupolster ist lose
+  assert.ok(p({ objekte: [v('staupolster', { id: 'p', x: 0 })], gurte: [], flaeche }).hinweise.some((h) => h.art === 'lose'));
+});
