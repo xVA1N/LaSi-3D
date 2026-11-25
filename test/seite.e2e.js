@@ -334,6 +334,34 @@ const ach = await seite.evaluate(() => window.lasi.achslasten());
 pruefe(ach.achsen.some((a) => !a.ok) && (await status()).includes('Achslast'), 'Überladene Achse wird gemeldet');
 pruefe((await seite.textContent('#marken')).includes('Vorderachse'), 'Überladene Achse wird in der Ansicht markiert');
 
+// Fahrt-Simulation: ungesicherte Kiste rutscht bei Vollbremsung, gesicherte Ladung bleibt
+await seite.selectOption('#fahrzeug', 'sattel'); await seite.click('#beispiel'); await kurz();
+await seite.mouse.click(5, 300);
+await seite.click('#ladegut-neu'); await seite.click('[data-ladegut="holzkiste"]'); await kurz();
+const lose = await seite.evaluate(() => window.lasi.auswahl().id);
+await seite.evaluate((id) => window.lasi.setze(id, { x: 0, z: 0 }), lose); await kurz();
+const vorFahrt = JSON.stringify((await lage()).objekte);
+await seite.click('#fahrt-knopf'); await seite.click('[data-fahrt="bremsen"]');
+await seite.waitForFunction(() => window.lasi.fahrt()?.fertig, null, { timeout: 15000 });
+const fz = await seite.evaluate(() => window.lasi.fahrt());
+const kisteUnit = fz.z.find((u) => u.x > 1);
+pruefe(!!kisteUnit && fz.z.filter((u) => Math.abs(u.x) > 0.01).length === 1, 'Vollbremsung: nur die ungesicherte Kiste rutscht nach vorne');
+pruefe((await seite.textContent('#fahrtband')).includes('hält nicht') && (await seite.textContent('#fahrtband')).includes('rutscht'), 'Ergebnis nennt, was nicht hält');
+if (bilder) await seite.screenshot({ path: `${bilder}/fahrt-bremsen.png` });
+await seite.click('[data-fahrt-aktion="ende"]'); await kurz();
+pruefe(JSON.stringify((await lage()).objekte) === vorFahrt && await seite.isHidden('#fahrtband'), 'Nach der Fahrt ist die Beladung unverändert');
+await seite.click('#fahrt-knopf'); await seite.click('[data-fahrt="kurve"]');
+await seite.waitForFunction(() => window.lasi.fahrt()?.fertig, null, { timeout: 15000 });
+pruefe((await seite.evaluate(() => window.lasi.fahrt())).z.some((u) => u.faellt), 'Kurve: ungesicherte Kiste fällt herunter');
+if (bilder) await seite.screenshot({ path: `${bilder}/fahrt-kurve.png` });
+await seite.click('[data-fahrt-aktion="ende"]'); await kurz();
+await seite.evaluate((id) => document.querySelector('[data-waehle="' + id + '"]')?.click(), lose); await kurz();
+await seite.click('[data-aktion="loeschen"]'); await kurz();
+await seite.click('#fahrt-knopf'); await seite.click('[data-fahrt="ausweichen"]');
+await seite.waitForFunction(() => window.lasi.fahrt()?.fertig, null, { timeout: 15000 });
+pruefe((await seite.textContent('#fahrtband')).includes('Alles hat gehalten'), 'Gesichertes Beispiel hält beim Ausweichen');
+await seite.click('[data-fahrt-aktion="ende"]'); await kurz();
+
 for (const f of ['motorwagen', 'klein']) {
   await seite.selectOption('#fahrzeug', f);
   await seite.click('#beispiel'); await kurz();

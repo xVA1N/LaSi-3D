@@ -5,6 +5,7 @@ import { FAHRZEUGE, LADEGUT, HILFSMITTEL, GURTTYPEN, MATERIALIEN, beispiel } fro
 import { bewegGruppe, vereinigung, anWand, verschiebe, abstandVorne, unterlage, setzeUnterlage, freierGurtX, UEBERSTAND_MAX } from './aktionen.js';
 import { pruefeUebermass, GRENZEN } from './uebermass.js';
 import { pruefeAchslasten, lastverteilungsplan } from './achslast.js';
+import { MANOEVER, startzustand, schritt, auswertung } from './fahrt.js';
 
 // ---------- Zustand ----------
 const SPEICHER = 'lasi3d-beladung';
@@ -103,8 +104,11 @@ function leere(gruppe) {
 }
 
 // Fahrzeug
+// Welt: Fahrzeug und Ladung zusammen, damit sich der Zug bei der Fahrt neigen kann
+const welt = new THREE.Group();
+szene.add(welt);
 const lkw = new THREE.Group();
-szene.add(lkw);
+welt.add(lkw);
 // Rad mit Reifen, Felge und Nabe; aussen = +1/−1 (Felge zur Außenseite)
 function rad(gruppe, x, y, z, r, breite, aussen) {
   const reifen = new THREE.Mesh(new THREE.CylinderGeometry(r, r, breite, 32).rotateX(Math.PI / 2), mat(0x1b1b1b, { roughness: 0.9 }));
@@ -252,7 +256,8 @@ function setzeObenZiel(x) {
 
 // Ladung, Hilfsmittel, Gurte
 const ladungGruppe = new THREE.Group();
-szene.add(ladungGruppe);
+welt.add(ladungGruppe);
+const objektGruppen = new Map(); // Objekt-ID → gezeichnete Gruppe (für die Fahrt-Simulation)
 let anklickbar = [];
 
 const FARBEN = { rohr: 0x6f7c86, holzkiste: 0xc89b5f, gitterbox: 0x9aa3ab, ibc: 0xf2f2ee, fass: 0x1f5fa8, papierrolle: 0xd9c39a, kunststoffkisten: 0x2f7fd0, mauersteine: 0xd98a5a, europalette: 0xd2b48c, rhm: 0x23272a };
@@ -349,6 +354,7 @@ function baueObjekt(o, y, status, gewaehlt, deckNachMinus = false) {
     g.add(kasten(l + 0.02, 0.008, b + 0.02, mat(0xffc400, { transparent: true, opacity: 0.35, depthWrite: false }), 0, h + 0.012, 0));
   }
   ladungGruppe.add(g);
+  objektGruppen.set(o.id, g);
 }
 
 // mangelhafte Gurte blinken rot (Deckkraft wird in der Zeichenschleife geändert)
@@ -477,6 +483,7 @@ function baueBucht(g, info, gewaehlt) {
 
 function zeichne() {
   leere(ladungGruppe);
+  objektGruppen.clear();
   anklickbar = [];
   const status = new Map();
   for (const e of ergebnis.ergebnisse) for (const m of e.einheit.mitglieder) status.set(m.id, e.ok);
@@ -488,7 +495,9 @@ function zeichne() {
   }
   for (const g of zustand.gurte) {
     const info = ergebnis.gurte.find((i) => i.id === g.id), gew = auswahl?.art === 'gurt' && auswahl.id === g.id;
+    const vorher = ladungGruppe.children.length;
     if (g.art === 'kopf') baueKopf(g, info, gew); else if (g.art === 'direkt') baueDirekt(g, info, gew); else if (g.art === 'bucht') baueBucht(g, info, gew); else baueGurt(g, info, gew);
+    for (const k of ladungGruppe.children.slice(vorher)) k.userData.gurt = g.id; // Teile des Gurts merken
   }
   baueReihen();
   baueAchslast();
@@ -714,7 +723,102 @@ function begrenzeOben() {
   kameraOben.position.set(x, H + 50, 0.1);
 }
 
+// ---------- Fahrt-Simulation ----------
+let fahrt = null;
+let letzteZeit = performance.now();
+const X = new THREE.Vector3(1, 0, 0), Z = new THREE.Vector3(0, 0, 1);
+function fahrtSchritt() {
+  const jetzt = performance.now(), dt = Math.min(0.05, (jetzt - letzteZeit) / 1000);
+  letzteZeit = jetzt;
+  if (!fahrt) return;
+  const f = fahrzeug();
+  const p = fahrt.m.phasen[fahrt.phase];
+  let neigung = { x: 0, z: 0 };
+  if (p) {
+    for (let t = 0; t < dt; t += 0.01) schritt(fahrt.z, p, Math.min(0.01, dt - t), f);
+    fahrt.t += dt;
+    neigung = p.r === 'vorwaerts' ? { x: 0, z: -0.025 } : p.r === 'rueckwaerts' ? { x: 0, z: 0.015 } : { x: 0.035 * p.dz, z: 0 };
+    if (fahrt.t >= p.dauer) { fahrt.phase += 1; fahrt.t = 0; }
+  } else if (!fahrt.fertig) {
+    for (let t = 0; t < dt; t += 0.01) schritt(fahrt.z, { r: 'vorwaerts', dx: 0, dz: 0 }, Math.min(0.01, dt - t), f); // ausrollen, Herunterfallen zu Ende
+    fahrt.nach = (fahrt.nach ?? 0) + dt;
+    if (fahrt.nach > 1.2) { fahrt.fertig = true; zeigeFahrtErgebnis(); }
+  }
+  welt.rotation.x += (neigung.x - welt.rotation.x) * 0.12;
+  welt.rotation.z += (neigung.z - welt.rotation.z) * 0.12;
+  // Lage der bewegten Einheiten anwenden
+  for (const u of fahrt.z) {
+    const e = ergebnis.ergebnisse.find((x) => x.id === u.id);
+    if (!e) continue;
+    const y0 = f.hoehe + u.basisY;
+    let q = new THREE.Quaternion(), pivot = null;
+    if (u.kippRichtung && u.kipp > 0) {
+      const [achse, w, px, pz] = { links: [X, -u.kipp, 0, u.f.z0], rechts: [X, u.kipp, 0, u.f.z1], vorne: [Z, -u.kipp, u.f.x1, 0], hinten: [Z, u.kipp, u.f.x0, 0] }[u.kippRichtung];
+      q = new THREE.Quaternion().setFromAxisAngle(achse, w);
+      pivot = new THREE.Vector3(px + u.x, y0 + u.y, pz + u.z);
+    }
+    for (const m of e.einheit.mitglieder) {
+      const g = objektGruppen.get(m.id);
+      if (!g?.userData.basisPos) continue;
+      const pos = g.userData.basisPos.clone().add(new THREE.Vector3(u.x, u.y, u.z));
+      if (pivot) pos.sub(pivot).applyQuaternion(q).add(pivot);
+      g.position.copy(pos);
+      g.quaternion.copy(q).multiply(g.userData.basisQuat);
+      if (m.form === 'rohr' && u.roll) g.quaternion.multiply(new THREE.Quaternion().setFromAxisAngle(X, -u.roll));
+    }
+  }
+}
+
+function oeffneFahrtWahl() {
+  oeffneBlatt(`<h3 id="blatt-titel">Fahrt simulieren</h3>
+    <p class="werte">Ladung, die laut Prüfung nicht hält, rutscht, rollt oder kippt sichtbar mit dem nicht gehaltenen Teil der Kraft, bis sie anschlägt oder herunterfällt. Ihre Gurte werden ausgeblendet.</p>
+    <div class="katalog" style="grid-template-columns:1fr">${Object.entries(MANOEVER).map(([k, m]) => `<button type="button" data-fahrt="${k}"><span>${m.name}<small>${m.text}</small></span></button>`).join('')}</div>
+    ${fuss(false)}`);
+}
+function starteFahrt(k) {
+  schliesseBlatt();
+  beendeFahrt(false);
+  auswahl = null;
+  const los = () => {
+    aktualisiere();
+    for (const g of objektGruppen.values()) { g.userData.basisPos = g.position.clone(); g.userData.basisQuat = g.quaternion.clone(); }
+    const m = MANOEVER[k];
+    const z = startzustand(ergebnis, fahrzeug(), ergebnis.lage);
+    // Gurte von Einheiten ausblenden, die bei diesem Manöver nicht halten
+    const bewegt = new Set(z.filter((u) => m.phasen.some((p) => {
+      const d = u.richtungen[p.r];
+      return !(d.ok || d.formschluss) || (p.r === 'seitlich' ? !u.kippen.seitlich.ok : !u.kippen.laengs.ok && !d.formschluss);
+    })).map((u) => u.id));
+    for (const c of ladungGruppe.children) {
+      const info = c.userData.gurt && ergebnis.gurte.find((i) => i.id === c.userData.gurt);
+      if (info?.getroffen?.some((id) => bewegt.has(id))) c.visible = false;
+    }
+    fahrt = { k, m, z, phase: 0, t: 0, fertig: false };
+    markenFeld.style.display = 'none';
+    $('leiste').hidden = true;
+    $('fahrtband').hidden = false;
+    $('fahrtband').innerHTML = `<b>${m.name}</b> · ${m.text}`;
+  };
+  if (ansicht !== '3d') { setzeAnsicht('3d'); requestAnimationFrame(() => requestAnimationFrame(los)); } else los();
+}
+function zeigeFahrtErgebnis() {
+  const aus = auswertung(fahrt.z).filter((a) => a.was.length);
+  const name = (id) => { const e = ergebnis.ergebnisse.find((x) => x.id === id); const r = reihen.find((x) => x.ids.includes(id)); return `${r ? `LR${r.nr} ` : ''}${einheitName(e)}`; };
+  $('fahrtband').innerHTML = `<b>${fahrt.m.name}:</b> ${aus.length ? `<span class="schlecht">${aus.length} ${aus.length === 1 ? 'Einheit hält' : 'Einheiten halten'} nicht</span>` : '<span class="gut">✓ Alles hat gehalten</span>'}
+    ${aus.length ? `<ul>${aus.map((a) => `<li>${esc(name(a.id))}: ${esc(a.was.join(', '))}</li>`).join('')}</ul>` : ''}
+    <div class="knoepfe"><button type="button" data-fahrt-aktion="nochmal">Nochmal</button><button type="button" class="leise" data-fahrt-aktion="andere">Andere Fahrt</button><button type="button" class="leise" data-fahrt-aktion="ende">Beenden</button></div>`;
+}
+function beendeFahrt(neuZeichnen = true) {
+  if (!fahrt) return;
+  fahrt = null;
+  welt.rotation.set(0, 0, 0);
+  markenFeld.style.display = '';
+  $('fahrtband').hidden = true;
+  if (neuZeichnen) aktualisiere();
+}
+
 renderer.setAnimationLoop(() => {
+  fahrtSchritt();
   steuerung().update();
   if (ansicht === 'oben') begrenzeOben();
   mangelMat.opacity = 0.25 + 0.75 * (Math.sin(performance.now() / 160) > 0 ? 1 : 0);
@@ -925,7 +1029,7 @@ function zeigeErgebnis() {
 function zeigeLeiste() {
   const leiste = $('leiste');
   const o = gewaehltesObjekt(), g = gewaehlterGurt();
-  if (!o && !g) { leiste.hidden = true; return; }
+  if ((!o && !g) || fahrt) { leiste.hidden = true; return; }
   leiste.hidden = false;
   const knopf = (aktion, symbol, text, extra = '') => `<button type="button" data-aktion="${aktion}" ${extra}><em>${symbol}</em>${text}</button>`;
   let status;
@@ -1394,6 +1498,8 @@ blattInhalt.addEventListener('click', (ev) => {
       else if (ladung && (art === 'diagonal' || art === 'schraeg')) neueDirektzurrung(ladung, art);
       else if (ladung) neueKopfschlinge(ladung, art === 'kopf-hinten' ? 'hinten' : 'vorne');
     }
+  } else if (el.dataset.fahrt) {
+    starteFahrt(el.dataset.fahrt);
   } else if (el.dataset.ladegut) {
     schliesseBlatt();
     neuesObjekt(LADEGUT.find((v) => v.art === el.dataset.ladegut));
@@ -1512,7 +1618,7 @@ function brichZiehenAb() {
 }
 
 behaelter.addEventListener('pointerdown', (ev) => {
-  if (ev.target !== renderer.domElement) return;
+  if (ev.target !== renderer.domElement || fahrt) return;
   aktiveZeiger.add(ev.pointerId);
   if (aktiveZeiger.size > 1) { brichZiehenAb(); tippZiel = null; druck = null; return; }
   druck = { x: ev.clientX, y: ev.clientY };
@@ -1609,6 +1715,13 @@ $('fahrzeug').addEventListener('change', () => { zustand.fahrzeugId = $('fahrzeu
 $('nutzlast').addEventListener('input', () => { const v = +$('nutzlast').value; if (v > 0) { zustand.nutzlast = v; speichere(); aktualisiereBald(); } });
 zeigeNutzlast();
 $('ladegut-neu').addEventListener('click', oeffneKatalog);
+$('fahrt-knopf').addEventListener('click', oeffneFahrtWahl);
+$('fahrtband').addEventListener('click', (ev) => {
+  const a = ev.target.closest('[data-fahrt-aktion]')?.dataset.fahrtAktion;
+  if (a === 'nochmal') starteFahrt(fahrt.k);
+  if (a === 'andere') { beendeFahrt(); oeffneFahrtWahl(); }
+  if (a === 'ende') beendeFahrt();
+});
 $('palette-neu').addEventListener('click', () => neuesObjekt(HILFSMITTEL.find((v) => v.art === 'europalette')));
 // + RHM: unter das ausgewählte Ladegut bzw. die ausgewählte Palette legen, sonst an die nächste freie Stelle
 $('rhm-neu').addEventListener('click', () => {
@@ -1650,6 +1763,7 @@ setzeAnsicht(ansicht, true);
 window.lasi = {
   zustand: () => zustand, ergebnis: () => ergebnis, auswahl: () => auswahl, ansicht: () => ansicht,
   uebermass: () => uebermass,
+  fahrt: () => fahrt && { fertig: fahrt.fertig, z: fahrt.z.map((u) => ({ id: u.id, x: u.x, z: u.z, kipp: u.kipp, faellt: u.faellt })) },
   achslasten: () => achs,
   obenSicht: () => ({ x: steuerOben.target.x, z: steuerOben.target.z, zoom: kameraOben.zoom, minZoom: steuerOben.minZoom }),
   // Werte eines Objekts direkt setzen (für die Tests)
