@@ -1644,9 +1644,10 @@ function oeffneKatalog() {
 
 // ---------- Hinzufügen ----------
 /** Freie Stelle für eine Grundfläche lx × lz suchen, von der Stirnwand nach hinten */
-function freieStelle(lx, lz) {
+// RHM blockiert nur weiteres RHM; Ladung und EPAL dürfen draufgestellt werden
+function freieStelle(lx, lz, istRhm = false) {
   const { laenge: L, breite: B } = fahrzeug();
-  const andere = zustand.objekte.map(fussabdruck);
+  const andere = zustand.objekte.filter((o) => istRhm || o.typ !== 'rhm').map(fussabdruck);
   for (let x = L / 2; x - lx >= -L / 2 - 1e-6; x -= 0.05) {
     for (const seite of [-1, 1, 0]) {
       const z = seite * (B / 2 - lz / 2);
@@ -1660,7 +1661,7 @@ function neuesObjekt(vorlage) {
   const o = { typ: 'ladung', ...vorlage, id: neueId('o'), x: 0, z: 0, drehung: 0, mu: 0 };
   const sel = gewaehltesObjekt();
   if (o.typ === 'ladung' && sel && sel.typ !== 'ladung') { o.x = sel.x; o.z = sel.z; o.drehung = sel.drehung; }
-  else { const p = freieStelle(o.l, o.b) ?? { x: 0, z: 0 }; o.x = p.x; o.z = p.z; }
+  else { const p = freieStelle(o.l, o.b, o.typ === 'rhm') ?? { x: 0, z: 0 }; o.x = p.x; o.z = p.z; }
   zustand.objekte.push(o);
   auswahl = { art: 'objekt', id: o.id };
   aendere();
