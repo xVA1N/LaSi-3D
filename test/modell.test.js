@@ -2,7 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { pruefe, ladeeinheiten, stapeln, rechenkraftDaN } from '../src/modell.js';
 
-const flaeche = { laenge: 13.6, breite: 2.48 };
+// Zurrpunkte hier sehr fest, damit die Formeln ohne Begrenzung durch den Zurrpunkt geprüft werden
+const flaeche = { laenge: 13.6, breite: 2.48, zurrpunkt: { art: 'en12640', lc: 10000 } };
 const kiste = (id, x, z = 0, mehr = {}) => ({ id, typ: 'ladung', name: id, material: 'holz', masse: 1200, l: 1.2, b: 2.48, h: 1, x, z, drehung: 0, ...mehr });
 const palette = (id, x, z = 0) => ({ id, typ: 'palette', name: id, material: 'holz', masse: 25, l: 1.2, b: 0.8, h: 0.144, x, z, drehung: 0 });
 const rhm = (id, x, z = 0) => ({ id, typ: 'rhm', name: id, material: 'rhm', masse: 0, l: 1.2, b: 0.8, h: 0.008, x, z, drehung: 0 });
@@ -312,4 +313,27 @@ test('Verbändern: Fuge Ladung/EPAL zählt nicht mehr, nur EPAL auf der Fläche'
   assert.equal(e.verbaendert, true);
   assert.equal(bandPalette(o, st(o), last).id, 'p');
   assert.equal(bandPalette(o, st(o), o[1]).id, 'p');
+});
+
+test('Zurrpunkt begrenzt Direktzurren: LC 2500 am Punkt mit 2000 daN zählt 2000', async () => {
+  const { pruefe: p } = await import('../src/modell.js');
+  const k = { id: 'k', typ: 'ladung', name: 'Kiste', material: 'holz', masse: 2000, l: 1.2, b: 1.0, h: 1, x: 0, z: 0, drehung: 0 };
+  const g = { id: 'd', art: 'direkt', variante: 'diagonal', ziel: 'k', ecke: 'vl', abstand: 1, anschlag: 0.5, lc: 2500, stf: 500 };
+  const r = p({ objekte: [k], gurte: [g], flaeche: { laenge: 13.6, breite: 2.48 } });
+  assert.equal(r.gurte[0].lcWirksam, 2000);
+  // Anschlagpunkt mit Belastungswinkel: α ≈ 20° → θ ≈ 70° → 50 %
+  const w = p({ objekte: [k], gurte: [g], flaeche: { laenge: 13.6, breite: 2.48, zurrpunkt: { art: 'winkel', lc: 19000 } } });
+  assert.equal(w.gurte[0].punkt.faktor, 0.5);
+  assert.equal(w.gurte[0].lcWirksam, 2500);
+});
+
+test('Höchstens 3 Gurte je Meter Rahmen und Seite', async () => {
+  const { pruefe: p } = await import('../src/modell.js');
+  const k = { id: 'k', typ: 'ladung', name: 'Kiste', material: 'holz', masse: 2000, l: 2.4, b: 1.0, h: 1, x: 0, z: 0, drehung: 0 };
+  const gurt = (id, x) => ({ id, x, stf: 500, lc: 2500, zweiRatschen: false });
+  const drei = p({ objekte: [k], gurte: [gurt('a', -0.75), gurt('b', -0.25), gurt('c', 0.25)], flaeche: { laenge: 13.6, breite: 2.48 } });
+  assert.ok(!drei.hinweise.some((h) => h.art === 'zurrpunkt'));
+  const vier = p({ objekte: [k], gurte: [gurt('a', -0.75), gurt('b', -0.25), gurt('c', 0.25), gurt('d', 0.3)], flaeche: { laenge: 13.6, breite: 2.48 } });
+  assert.ok(vier.hinweise.some((h) => h.art === 'zurrpunkt'));
+  assert.equal(vier.ok, false);
 });

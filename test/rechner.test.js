@@ -27,3 +27,10 @@ test('Kippen: schmale hohe Ladung kippt seitlich', () => {
   assert.equal(r.vorwaerts.kippsicher, false); // 0,8·1,0 > 0,6
   assert.equal(r.rueckwaerts.kippsicher, true); // 0,5·1,0 ≤ 0,6
 });
+
+test('Belastungswinkel wie auf dem Plakat: WLL 9,5 t als Zurrmittel', async () => {
+  const { belastungswinkel } = await import('../src/rechner.js');
+  assert.equal(belastungswinkel({ wll: 9.5, theta: 0 }).zulaessig, 19);
+  nah(belastungswinkel({ wll: 9.5, theta: 45 }).zulaessig, 13.3, 0.01);
+  nah(belastungswinkel({ wll: 9.5, theta: 90 }).zulaessig, 9.5, 0.01);
+});

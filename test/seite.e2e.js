@@ -152,8 +152,9 @@ pruefe((await lage()).objekte.filter((o) => o.hochkant).length === 1, 'dabei kei
 const karte = await seite.textContent(`[data-waehle="${ibc}"]`);
 pruefe(karte.includes('Kopfschlinge'), 'Prüfung nennt die Kopfschlinge für rückwärts');
 await seite.click('[data-aktion="bearbeiten"]');
+const abstandVorher = (await lage()).gurte.find((g) => g.art === 'kopf').abstand; // neu angelegt am nächsten freien Zurrpunkt
 await seite.click('[data-feld="zurrabstand"] [data-d="1"]'); await kurz();
-pruefe((await lage()).gurte.find((g) => g.art === 'kopf').abstand === 1.05, 'Abstand der Zurrpunkte einstellbar');
+pruefe(Math.abs((await lage()).gurte.find((g) => g.art === 'kopf').abstand - (abstandVorher + 0.05)) < 1e-9, 'Abstand der Zurrpunkte einstellbar');
 await seite.click('[data-blatt="fertig"]');
 // Palette im Fenster zwischen liegend und hochkant umschalten
 await seite.click('#palette-neu'); await kurz();

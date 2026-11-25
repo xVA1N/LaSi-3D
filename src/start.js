@@ -1,6 +1,6 @@
 // Startseite: Simulator „Ladungssicherung 3D“ oder einzelne Rechner. Adressen: #3d, #rechner/<id>
 import { niederzurren, zurrwinkel, K_FAKTOR } from './berechnung.js';
-import { sicherungskraft, diagonalzurren, kippen } from './rechner.js';
+import { sicherungskraft, diagonalzurren, kippen, belastungswinkel } from './rechner.js';
 import { REIBWERTE, MU_RHM } from './modell.js';
 import { MATERIALIEN } from './daten.js';
 
@@ -102,6 +102,22 @@ function diagonalBild(alpha, beta) {
     <line class="gurt" x1="${ox}" y1="${oy}" x2="${ex}" y2="${ey}"/><circle class="anker" cx="${ox}" cy="${oy}" r="4"/>
     <path class="winkel" d="M${ox + 30} ${oy} A30 30 0 0 0 ${ox + 30 * Math.cos(b)} ${oy - 30 * Math.sin(b)}"/>
     <text class="m" x="${ox + 36}" y="${oy - 6}">β</text>
+  </svg>`;
+}
+
+// Fächer für den Belastungswinkel: 0° grün 100 %, bis 45° gelb 70 %, bis 90° orange 50 %
+function winkelBild(theta, wll) {
+  const cx = 170, cy = 40, r = 105, pkt = (g) => [cx - r * Math.sin((g * Math.PI) / 180), cy + r * Math.cos((g * Math.PI) / 180)];
+  const sektor = (a, b, klasse) => { const [x1, y1] = pkt(a), [x2, y2] = pkt(b); return `<path class="${klasse}" d="M${cx} ${cy} L${x1} ${y1} A${r} ${r} 0 0 1 ${x2} ${y2}Z"/>`; };
+  const [px, py] = pkt(Math.min(Math.max(theta, 0), 90));
+  return `<svg class="bild" viewBox="0 0 340 160" role="img" aria-label="Belastungswinkel">${MARKER}
+    ${sektor(45, 90, 'f50')}${sektor(5, 45, 'f70')}${sektor(0, 5, 'f100')}
+    <circle cx="${cx}" cy="${cy}" r="9" class="oese"/>
+    <line class="zug" x1="${cx}" y1="${cy}" x2="${px}" y2="${py}" marker-end="url(#pf-dunkel)"/>
+    <text class="m" x="${cx + 6}" y="${cy + r + 14}">0° · 100 %</text>
+    <text class="m" x="${pkt(45)[0] - 4}" y="${pkt(45)[1] + 14}" text-anchor="end">45° · 70 %</text>
+    <text class="m" x="${pkt(90)[0]}" y="${cy - 8}">90° · 50 %</text>
+    <text class="k" x="330" y="20" text-anchor="end">Achse des Schäkels nach unten</text>
   </svg>`;
 }
 const weg = (bild, formel, schritte, hinweis = '') => `<section class="rechenweg"><h2>So wird gerechnet</h2>${bild}
@@ -218,6 +234,27 @@ const RECHNER = [
       };
     },
   },
+  {
+    id: 'winkel', titel: 'Belastungswinkel', symbol: '∠', kurz: 'Was hält ein Schäkel oder Anschlagpunkt schräg belastet?',
+    felder: [
+      ['wll', 'Tragfähigkeit WLL (Prägung)', 9.5, 't', 0.5],
+      ['verwendung', 'Verwendung', 'zurr', [['zurr', 'Als Zurrmittel (LC = 2 × WLL)'], ['anschlag', 'Als Anschlagmittel (WLL)']]],
+      ['theta', 'Belastungswinkel θ (Abweichung von der Achse)', 30, '°', 5],
+    ],
+    rechne(w) {
+      const r = belastungswinkel({ wll: w.wll, zurr: w.verwendung === 'zurr', theta: w.theta });
+      return {
+        haupt: `${zahl(r.zulaessig, 1)} t zulässig (${Math.round(r.faktor * 100)} %)`,
+        ok: true,
+        zeilen: [['0° (in Achsrichtung)', `${zahl(r.grund, 1)} t · 100 %`, r.faktor === 1], ['bis 45°', `${zahl(r.grund * 0.7, 1)} t · 70 %`, r.faktor === 0.7], ['bis 90°', `${zahl(r.grund * 0.5, 1)} t · 50 %`, r.faktor === 0.5]],
+        weg: weg(winkelBild(w.theta, w.wll),
+          `${v('F', 'zul')} = ${w.verwendung === 'zurr' ? `2 · ${v('WLL')}` : v('WLL')} · ${v('f', 'θ')}`,
+          [`${w.verwendung === 'zurr' ? `2 · ${zahl(w.wll, 1)} t = <b>${zahl(r.grund, 1)} t</b> (Zurrmittel)` : `${v('WLL')} = <b>${zahl(r.grund, 1)} t</b>`}`,
+            `θ = ${zahl(w.theta, 0)}° → ${v('f', 'θ')} = ${zahl(r.faktor, 1)} → ${zahl(r.grund, 1)} t · ${zahl(r.faktor, 1)} = <b>${zahl(r.zulaessig, 1)} t</b>`],
+          'Als Zurrmittel darf die doppelte WLL angesetzt werden (LC = 2 × WLL). Weicht die Zugrichtung von der Achse ab, sinkt die zulässige Last: bis 45° auf 70 %, bis 90° auf 50 %. Herstellerangaben haben Vorrang.'),
+      };
+    },
+  },
 ];
 
 // ---------- Startseite ----------
@@ -246,7 +283,7 @@ function zeigeRechner(r) {
     for (const f of r.felder) form.querySelector(`[data-feld="${f[0]}"]`).hidden = f[5] ? !f[5](w) : false;
     try { localStorage.setItem(speicherName(r.id), JSON.stringify(w)); } catch { /* egal */ }
     const zahlen = r.felder.filter((f) => !Array.isArray(f[3]) && (!f[5] || f[5](w)));
-    if (zahlen.some(([k]) => !(w[k] > 0) && !(k === 'mu' && w[k] === 0))) { $('rechner-ergebnis').innerHTML = '<p class="werte">Bitte alle Werte größer als 0 eingeben.</p>'; return; }
+    if (zahlen.some(([k]) => !(w[k] > 0) && !((k === 'mu' || k === 'theta') && w[k] === 0))) { $('rechner-ergebnis').innerHTML = '<p class="werte">Bitte alle Werte größer als 0 eingeben.</p>'; return; }
     const e = r.rechne(w);
     $('rechner-ergebnis').innerHTML = `<div class="einheit ${e.ok ? '' : 'nein'}"><b class="${e.ok ? 'gut' : 'schlecht'}">${e.haupt}</b>
       <table>${e.zeilen.map(([a, b, fett]) => `<tr${fett ? ' class="fett"' : ''}><td>${a}</td><td>${b}</td></tr>`).join('')}</table></div>
