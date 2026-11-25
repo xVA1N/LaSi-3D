@@ -18,6 +18,9 @@ let reihen = [];
 let ansicht = 'oben';
 try { ansicht = localStorage.getItem('lasi3d-ansicht') === '3d' ? '3d' : 'oben'; } catch { /* ohne Speicher: Draufsicht */ }
 let zaehler = 0;
+// Anzeige-Schalter (im Browser gespeichert)
+const anzeige = { reihen: true, achsen: true };
+try { Object.assign(anzeige, JSON.parse(localStorage.getItem('lasi3d-anzeige') || '{}')); } catch { /* egal */ }
 let zeigeSchwerpunkt = true;
 try { zeigeSchwerpunkt = localStorage.getItem('lasi3d-schwerpunkt') !== 'aus'; } catch { /* egal */ }
 let platzMuster = null; // null | 'laengs' | 'quer': EPAL-Stellplätze eingeblendet
@@ -507,7 +510,7 @@ function zeichne() {
     if (g.art === 'kopf') baueKopf(g, info, gew); else if (g.art === 'direkt') baueDirekt(g, info, gew); else if (g.art === 'bucht') baueBucht(g, info, gew); else baueGurt(g, info, gew);
     for (const k of ladungGruppe.children.slice(vorher)) k.userData.gurt = g.id; // Teile des Gurts merken
   }
-  baueReihen();
+  if (anzeige.reihen) baueReihen();
   bauePlaetze();
   baueAchslast();
   baueUebermass();
@@ -717,7 +720,7 @@ function baueMarken() {
     }
   }
   // Schild in der vorderen rechten Ecke der Reihe, damit es die Namen in der Mitte nicht verdeckt
-  for (const r of reihen) marke(`reihe r${(r.nr - 1) % 2}`, `LR${r.nr}`, new THREE.Vector3(r.x1 - 0.1, H, B / 2 - 0.05));
+  if (anzeige.reihen) for (const r of reihen) marke(`reihe r${(r.nr - 1) % 2}`, `LR${r.nr}`, new THREE.Vector3(r.x1 - 0.1, H, B / 2 - 0.05));
   if (uebermass.ueberHinten > 0.005) {
     const z = Math.min(Math.max(uebermass.fahne?.z ?? 0, -B / 2), B / 2);
     marke(uebermass.ueberHinten > GRENZEN.kennzeichnungAb ? 'warnung' : 'mass', `Überstand ${laenge(uebermass.ueberHinten)}`, new THREE.Vector3(-L / 2 - uebermass.ueberHinten / 2, H, z));
@@ -736,8 +739,8 @@ function baueMarken() {
   }
   if (achs.schwerpunkt.masse > 0 && zeigeSchwerpunkt && ansicht === '3d') marke('mass', `${SCHWERPUNKT_SVG(14)} Schwerpunkt`, new THREE.Vector3(achs.schwerpunkt.x, H + Math.max(0.6, ...zustand.objekte.map((o) => (ergebnis.lage.get(o.id)?.y ?? 0) + o.h)) + 0.85, achs.schwerpunkt.z));
   for (const a of achs.achsen) if (!a.ok) marke('warnung', `${a.name}: ${zahl(a.last / 1000, 1)} t`, new THREE.Vector3(a.x, 1.3, B / 2));
-  for (const a of einzelachsen()) marke(`achsnr ${a.last > a.max + 1e-6 ? 'zu' : ''}`, a.nr, new THREE.Vector3(a.x, 0.5, B / 2 + 0.05));
-  if (achs.zapfen) marke('achsnr zapfen', '⊙', new THREE.Vector3(achs.zapfen.x, H - 0.3, B / 2 + 0.05));
+  if (anzeige.achsen) for (const a of einzelachsen()) marke(`achsnr ${a.last > a.max + 1e-6 ? 'zu' : ''}`, a.nr, new THREE.Vector3(a.x, 0.5, B / 2 + 0.05));
+  if (anzeige.achsen && achs.zapfen) marke('achsnr zapfen', '⊙', new THREE.Vector3(achs.zapfen.x, H - 0.3, B / 2 + 0.05));
   if (uebermass.zuHoch) marke('warnung', `Höhe ${zahl(uebermass.hoehe, 2)} m`, new THREE.Vector3(0, GRENZEN.hoehe, 0));
   const o = gewaehltesObjekt();
   if (o) {
@@ -945,6 +948,7 @@ function aktualisiere() {
   zeichne();
   zeigeErgebnis();
   zeigeAchsbox();
+  zeigeAnzeige();
   zeigeLeiste();
   zeigePlatzleiste();
   blattLage();
@@ -1036,9 +1040,13 @@ function einzelachsen() {
   }
   return liste;
 }
+function zeigeAnzeige() {
+  const schalter = [['reihen', 'Ladereihen', anzeige.reihen], ['achsen', 'Achslasten', anzeige.achsen], ['schwerpunkt', 'Schwerpunkt', zeigeSchwerpunkt]];
+  $('anzeige').innerHTML = schalter.map(([k, t, an]) => `<button type="button" data-anzeige="${k}" class="${an ? 'an' : ''}" aria-pressed="${an}">${an ? '✓ ' : ''}${t}</button>`).join('');
+}
 function zeigeAchsbox() {
   const box = $('achsbox');
-  if (!achs) { box.textContent = ''; return; }
+  if (!achs || !anzeige.achsen) { box.textContent = ''; return; }
   const t = (kg) => `${zahl(kg / 1000, 1)} t`;
   const zeile = (nr, last, max, extra = '') => `<div class="zeile ${last > max + 1e-6 ? 'zu' : ''}"><span class="nr ${extra}">${nr}</span><span class="wert">${t(last)}</span><span class="max">/ ${t(max)}</span></div>`;
   const achsen = einzelachsen();
@@ -1839,6 +1847,18 @@ $('nutzlast').addEventListener('input', () => { const v = +$('nutzlast').value; 
 zeigeNutzlast();
 $('ladegut-neu').addEventListener('click', oeffneKatalog);
 $('fahrt-knopf').addEventListener('click', oeffneFahrtWahl);
+$('anzeige').addEventListener('click', (ev) => {
+  const k = ev.target.closest('[data-anzeige]')?.dataset.anzeige;
+  if (!k) return;
+  if (k === 'schwerpunkt') {
+    zeigeSchwerpunkt = !zeigeSchwerpunkt;
+    try { localStorage.setItem('lasi3d-schwerpunkt', zeigeSchwerpunkt ? 'an' : 'aus'); } catch { /* egal */ }
+  } else {
+    anzeige[k] = !anzeige[k];
+    try { localStorage.setItem('lasi3d-anzeige', JSON.stringify(anzeige)); } catch { /* egal */ }
+  }
+  aktualisiere();
+});
 $('fahrtband').addEventListener('click', (ev) => {
   const a = ev.target.closest('[data-fahrt-aktion]')?.dataset.fahrtAktion;
   if (a === 'nochmal') starteFahrt(fahrt.k);
