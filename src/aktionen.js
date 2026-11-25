@@ -123,3 +123,31 @@ export function freierGurtX(gurte, u) {
   }
   return runde(mitte);
 }
+
+/**
+ * EPAL-Stellplätze auf der Ladefläche, von der Stirnwand nach hinten.
+ * längs: 1,2 m in Fahrtrichtung, 3 nebeneinander; quer: 0,8 m in Fahrtrichtung, 2 nebeneinander.
+ */
+export function stellplaetze(flaeche, muster) {
+  const L = flaeche.laenge / 2, B = flaeche.breite;
+  const [lx, lz, drehung] = muster === 'quer' ? [0.8, 1.2, 90] : [1.2, 0.8, 0];
+  const nebeneinander = Math.floor((B + 1e-9) / lz);
+  const plaetze = [];
+  for (let x1 = L, reihe = 1; x1 - lx >= -L - 1e-9; x1 -= lx, reihe++) {
+    for (let i = 0; i < nebeneinander; i++) {
+      const z = (i - (nebeneinander - 1) / 2) * lz;
+      plaetze.push({ nr: plaetze.length + 1, reihe, x: runde(x1 - lx / 2), z: runde(z), lx, lz, drehung });
+    }
+  }
+  return plaetze;
+}
+
+/** Ist der Stellplatz frei (keine Ladung, EPAL o. Ä. überdeckt ihn)? RHM zählt nicht. */
+export function platzFrei(platz, objekte) {
+  const p = { x0: platz.x - platz.lx / 2, x1: platz.x + platz.lx / 2, z0: platz.z - platz.lz / 2, z1: platz.z + platz.lz / 2 };
+  return !objekte.some((o) => {
+    if (o.typ === 'rhm') return false;
+    const f = fussabdruck(o);
+    return f.x0 < p.x1 - 0.02 && p.x0 < f.x1 - 0.02 && f.z0 < p.z1 - 0.02 && p.z0 < f.z1 - 0.02;
+  });
+}

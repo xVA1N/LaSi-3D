@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { pruefe, fussabdruck, fugenReibung, rechenkraftDaN, kopfLage, ladereihen, naechsterZurrpunkt, STIRNWAND_KRAFT_N, MU_RHM, ZURRPUNKT_AUSSEN } from './modell.js';
 import { FAHRZEUGE, LADEGUT, HILFSMITTEL, GURTTYPEN, MATERIALIEN, beispiel } from './daten.js';
-import { bewegGruppe, vereinigung, anWand, verschiebe, abstandVorne, unterlage, setzeUnterlage, freierGurtX, UEBERSTAND_MAX } from './aktionen.js';
+import { bewegGruppe, vereinigung, anWand, verschiebe, abstandVorne, unterlage, setzeUnterlage, freierGurtX, stellplaetze, platzFrei, UEBERSTAND_MAX } from './aktionen.js';
 import { pruefeUebermass, GRENZEN } from './uebermass.js';
 import { pruefeAchslasten, lastverteilungsplan } from './achslast.js';
 import { MANOEVER, startzustand, schritt, auswertung } from './fahrt.js';
@@ -18,6 +18,8 @@ let reihen = [];
 let ansicht = 'oben';
 try { ansicht = localStorage.getItem('lasi3d-ansicht') === '3d' ? '3d' : 'oben'; } catch { /* ohne Speicher: Draufsicht */ }
 let zaehler = 0;
+let platzMuster = null; // null | 'laengs' | 'quer': EPAL-Stellplätze eingeblendet
+try { platzMuster = ['laengs', 'quer'].includes(localStorage.getItem('lasi3d-plaetze')) ? localStorage.getItem('lasi3d-plaetze') : null; } catch { /* egal */ }
 const neueId = (p) => `${p}${Date.now().toString(36)}${++zaehler}`;
 const fahrzeug = () => FAHRZEUGE.find((f) => f.id === zustand.fahrzeugId) ?? FAHRZEUGE[0];
 const objekt = (id) => zustand.objekte.find((o) => o.id === id);
@@ -29,7 +31,10 @@ function lade() {
   try {
     const z = JSON.parse(localStorage.getItem(SPEICHER));
     if (!(z && Array.isArray(z.objekte) && Array.isArray(z.gurte))) return null;
-    for (const o of z.objekte) if (o.typ === 'rhm') o.name = 'RHM'; // früher „Antirutschmatte (RHM)“
+    for (const o of z.objekte) {
+      if (o.typ === 'rhm') o.name = 'RHM'; // früher „Antirutschmatte (RHM)“
+      if (o.art === 'europalette') o.name = 'EPAL'; // früher „Europalette“
+    }
     return z;
   } catch { return null; }
 }
@@ -500,10 +505,68 @@ function zeichne() {
     for (const k of ladungGruppe.children.slice(vorher)) k.userData.gurt = g.id; // Teile des Gurts merken
   }
   baueReihen();
+  bauePlaetze();
   baueAchslast();
   baueUebermass();
   baueMarken();
   baueMini();
+}
+
+// EPAL-Stellplätze: freie Plätze als helle Felder zum Antippen
+const platzMat = new THREE.MeshBasicMaterial({ color: 0x7fd3a8, transparent: true, opacity: 0.45, depthWrite: false });
+const platzRand = new THREE.LineBasicMaterial({ color: 0x2e8a5c });
+function freiePlaetze() {
+  return platzMuster ? stellplaetze(fahrzeug(), platzMuster).filter((p) => platzFrei(p, zustand.objekte)) : [];
+}
+function bauePlaetze() {
+  const H = fahrzeug().hoehe;
+  for (const p of freiePlaetze()) {
+    const feld = new THREE.Mesh(new THREE.BoxGeometry(p.lx - 0.06, 0.006, p.lz - 0.06), platzMat);
+    feld.position.set(p.x, H + 0.004, p.z);
+    feld.userData.ziel = { art: 'platz', id: `platz-${p.nr}`, nr: p.nr };
+    anklickbar.push(feld);
+    ladungGruppe.add(feld);
+    const rand = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(p.lx - 0.06, 0.006, p.lz - 0.06)), platzRand);
+    rand.position.copy(feld.position);
+    ladungGruppe.add(rand);
+  }
+}
+const epalVorlage = () => HILFSMITTEL.find((v) => v.art === 'europalette');
+function neueEpal(p) {
+  const o = { ...epalVorlage(), id: neueId('o'), x: p.x, z: p.z, drehung: p.drehung, mu: 0 };
+  zustand.objekte.push(o);
+  return o;
+}
+// Platz angetippt: ausgewähltes Teil dorthin, sonst eine EPAL hinstellen
+function platzAntippen(nr) {
+  const p = stellplaetze(fahrzeug(), platzMuster).find((x) => x.nr === nr);
+  if (!p) return;
+  const sel = gewaehltesObjekt();
+  if (sel && sel.typ !== 'rhm') {
+    const { wurzel, gruppe } = bewegGruppe(zustand.objekte, ergebnis.lage, sel);
+    // leere EPAL dreht sich passend zum Platz, sonst bleibt die Drehung
+    if (wurzel.art === 'europalette' && !wurzel.hochkant && gruppe.length === 1) wurzel.drehung = p.drehung;
+    const dx = p.x - wurzel.x, dz = p.z - wurzel.z;
+    for (const a of gruppe) { a.x = Math.round((a.x + dx) * 1000) / 1000; a.z = Math.round((a.z + dz) * 1000) / 1000; }
+  } else neueEpal(p);
+  aendere();
+}
+function zeigePlatzleiste() {
+  const bar = $('platzleiste');
+  if (!platzMuster || fahrt) { bar.hidden = true; return; }
+  const alle = stellplaetze(fahrzeug(), 'laengs').length, quer = stellplaetze(fahrzeug(), 'quer').length;
+  const frei = freiePlaetze().length;
+  bar.hidden = false;
+  bar.innerHTML = `<div class="platzzeile"><b>Stellplätze</b>
+      <div class="chips"><button type="button" data-muster="laengs" class="${platzMuster === 'laengs' ? 'an' : ''}">längs ${alle}</button><button type="button" data-muster="quer" class="${platzMuster === 'quer' ? 'an' : ''}">quer ${quer}</button></div>
+      <span class="werte">${frei} frei</span></div>
+    <div class="platzzeile"><span class="werte">Platz antippen: EPAL hin (Ausgewähltes dorthin)</span>
+      <button type="button" data-platz-aktion="fuellen" ${frei ? '' : 'disabled'}>Alle füllen</button><button type="button" class="leise" data-platz-aktion="fertig">Fertig</button></div>`;
+}
+function setzePlatzMuster(m) {
+  platzMuster = m;
+  try { localStorage.setItem('lasi3d-plaetze', m ?? ''); } catch { /* egal */ }
+  aktualisiere();
 }
 
 // Ladereihen: Streifen im Wechsel auf der Ladefläche unter der Ladung
@@ -840,6 +903,7 @@ function aktualisiere() {
   zeigeErgebnis();
   zeigeAchsbox();
   zeigeLeiste();
+  zeigePlatzleiste();
   blattLage();
 }
 function aktualisiereBald() {
@@ -861,9 +925,9 @@ function einheitName(e) {
   let name = [...zaehl].map(([n, k]) => (k > 1 ? `${k} × ${n}` : n)).join(' + ');
   if (!ladung.length) {
     const p = e.einheit.mitglieder.filter((o) => o.typ === 'palette').length;
-    return `${p > 1 ? `${p} × ` : ''}Europalette, leer${e.einheit.rhm ? ', RHM darunter' : ''}`;
+    return `${p > 1 ? `${p} × ` : ''}EPAL, leer${e.einheit.rhm ? ', RHM darunter' : ''}`;
   }
-  if (e.einheit.mitglieder.some((o) => o.typ === 'palette')) name += ' auf Palette';
+  if (e.einheit.mitglieder.some((o) => o.typ === 'palette')) name += ' auf EPAL';
   if (e.einheit.rhm) name += ', RHM darunter';
   return name;
 }
@@ -905,7 +969,7 @@ function gurtStatus(g) {
   }
   if (g.art === 'kopf') {
     if (!info?.getroffen.length) return { ok: false, text: '✗ ohne Ladung' };
-    return { ok: true, text: `α ≈ ${zahl(info.winkel, 0)}° · β ≈ ${zahl(info.beta, 0)}°${info.lastverteiler ? ' · um Palette als Lastverteiler' : ''}` };
+    return { ok: true, text: `α ≈ ${zahl(info.winkel, 0)}° · β ≈ ${zahl(info.beta, 0)}°${info.lastverteiler ? ' · um EPAL als Lastverteiler' : ''}` };
   }
   if (!info?.getroffen.length) return { ok: false, text: '✗ liegt auf keiner Ladung' };
   const gekappt = g.stf > g.lc / 2 ? ` · gerechnet mit ${rechenkraftDaN(g)} daN` : '';
@@ -1029,7 +1093,7 @@ function zeigeErgebnis() {
 function zeigeLeiste() {
   const leiste = $('leiste');
   const o = gewaehltesObjekt(), g = gewaehlterGurt();
-  if ((!o && !g) || fahrt) { leiste.hidden = true; return; }
+  if ((!o && !g) || fahrt || platzMuster) { leiste.hidden = true; return; }
   leiste.hidden = false;
   const knopf = (aktion, symbol, text, extra = '') => `<button type="button" data-aktion="${aktion}" ${extra}><em>${symbol}</em>${text}</button>`;
   let status;
@@ -1188,7 +1252,7 @@ function oeffneObjektBlatt() {
   if (o.typ !== 'rhm' && !o.hochkant) {
     const u = unterlage(zustand.objekte, ergebnis.lage, o);
     const wahl = o.typ === 'ladung'
-      ? [['flaeche', 'Ladefläche'], ['palette', 'Palette'], ['matte', 'RHM'], ['palette-matte', 'Palette + RHM']]
+      ? [['flaeche', 'Ladefläche'], ['palette', 'EPAL'], ['matte', 'RHM'], ['palette-matte', 'EPAL + RHM']]
       : [['flaeche', 'Ladefläche'], ['matte', 'RHM']];
     const gesperrt = u.geteilt || u.art === 'ladung';
     const notiz = u.geteilt ? '<p class="werte">Steht mit anderer Ladung auf derselben Unterlage; dort bearbeiten.</p>' : u.art === 'ladung' ? '<p class="werte">Steht auf anderer Ladung.</p>' : '';
@@ -1356,7 +1420,7 @@ function oeffneGurtWahl() {
       ${seite ? '' : k('frei', 'Einzelgurt frei spannen', 'von einer Ecke zu einem beliebigen Zurrpunkt am Rahmen')}
       ${seite ? '' : k('bucht', 'Buchtlashing (Schlingen je Seite)', 'Schlinge um die Ladung, paarweise links und rechts; hält seitlich, auch gegen Rollen')}
     </div>
-    ${e && !seite ? `<div class="chips"><button type="button" data-verteiler class="${verteilerAn ? 'an' : ''}">Palette hochkant als Lastverteiler dazustellen</button></div>` : ''}
+    ${e && !seite ? `<div class="chips"><button type="button" data-verteiler class="${verteilerAn ? 'an' : ''}">EPAL hochkant als Lastverteiler dazustellen</button></div>` : ''}
     ${seite ? '<p class="werte">Die Schlinge läuft um diese Palette und die Ladung dahinter.</p>' : ''}
     ${!e ? `<p class="werte">${o?.hochkant ? 'Für eine Kopfschlinge die Palette direkt an die Ladung stellen (Knopf „An Wand“ oder ziehen).' : 'Für eine Kopfschlinge zuerst Ladegut antippen.'}</p>` : ''}
     <div style="height:12px"></div>${fuss(false)}`);
@@ -1518,7 +1582,7 @@ blattInhalt.addEventListener('input', (ev) => {
 function oeffneKatalog() {
   oeffneBlatt(`<h3 id="blatt-titel">Ladegut hinzufügen</h3>
     <div class="katalog">${LADEGUT.map((v) => `<button type="button" data-ladegut="${v.art}"><i style="background:${css(FARBEN[v.art])}"></i><span>${esc(v.name)}<small>${zahl(v.masse, 0)} kg · ${v.form === 'zylinder' ? `Ø ${zahl(v.l)} m` : `${zahl(v.l)} × ${zahl(v.b)} m`}</small></span></button>`).join('')}</div>
-    <p class="werte">${gewaehltesObjekt()?.typ === 'palette' || gewaehltesObjekt()?.typ === 'rhm' ? 'Kommt auf die ausgewählte Palette bzw. RHM.' : 'Kommt an die nächste freie Stelle.'}</p>
+    <p class="werte">${gewaehltesObjekt()?.typ === 'palette' || gewaehltesObjekt()?.typ === 'rhm' ? 'Kommt auf die ausgewählte EPAL bzw. RHM.' : 'Kommt an die nächste freie Stelle.'}</p>
     ${fuss(false)}`);
 }
 
@@ -1576,6 +1640,10 @@ function treffe(ev, y) {
 const RASTER = 0.05, MAGNET = 0.08;
 function einrasten(o, bewegt) {
   const { laenge: L, breite: B } = fahrzeug();
+  if (platzMuster) {
+    const naechster = stellplaetze(fahrzeug(), platzMuster).reduce((a, p) => (Math.hypot(p.x - o.x, p.z - o.z) < Math.hypot(a.x - o.x, a.z - o.z) ? p : a));
+    if (Math.hypot(naechster.x - o.x, naechster.z - o.z) < 0.35) { o.x = naechster.x; o.z = naechster.z; return; }
+  }
   o.x = Math.round(o.x / RASTER) * RASTER;
   o.z = Math.round(o.z / RASTER) * RASTER;
   let f = fussabdruck(o);
@@ -1626,7 +1694,7 @@ behaelter.addEventListener('pointerdown', (ev) => {
   const { treffer } = treffe(ev, fahrzeug().hoehe);
   if (!treffer) return;
   const ziel = treffer.object.userData.ziel;
-  if (auswahl?.id !== ziel.id) { tippZiel = ziel; return; }
+  if (ziel.art === 'platz' || auswahl?.id !== ziel.id) { tippZiel = ziel; return; }
   steuerung().enabled = false;
   let gruppe = [], wurzel = null;
   if (ziel.art === 'objekt') ({ gruppe, wurzel } = bewegGruppe(zustand.objekte, ergebnis.lage, objekt(ziel.id)));
@@ -1673,7 +1741,8 @@ function zeigerHoch(ev) {
     if (bewegt) aendere();
   } else if (druck && Math.hypot(ev.clientX - druck.x, ev.clientY - druck.y) < 6) {
     // Antippen: anderes Teil auswählen, ins Leere tippen hebt die Auswahl auf
-    if (tippZiel) { auswahl = { ...tippZiel }; aktualisiere(); }
+    if (tippZiel?.art === 'platz') platzAntippen(tippZiel.nr);
+    else if (tippZiel) { auswahl = { ...tippZiel }; aktualisiere(); }
     else if (auswahl) { auswahl = null; aktualisiere(); }
   }
   druck = null;
@@ -1722,7 +1791,19 @@ $('fahrtband').addEventListener('click', (ev) => {
   if (a === 'andere') { beendeFahrt(); oeffneFahrtWahl(); }
   if (a === 'ende') beendeFahrt();
 });
-$('palette-neu').addEventListener('click', () => neuesObjekt(HILFSMITTEL.find((v) => v.art === 'europalette')));
+$('palette-neu').addEventListener('click', () => {
+  const frei = freiePlaetze()[0];
+  if (frei) { const o = neueEpal(frei); auswahl = platzMuster ? null : { art: 'objekt', id: o.id }; aendere(); zeigeImBild(o.x); }
+  else neuesObjekt(epalVorlage());
+});
+$('plaetze-knopf').addEventListener('click', () => { setzePlatzMuster(platzMuster ? null : 'laengs'); if (platzMuster && ansicht !== 'oben') setzeAnsicht('oben'); });
+$('platzleiste').addEventListener('click', (ev) => {
+  const m = ev.target.closest('[data-muster]')?.dataset.muster;
+  const a = ev.target.closest('[data-platz-aktion]')?.dataset.platzAktion;
+  if (m) setzePlatzMuster(m);
+  if (a === 'fertig') setzePlatzMuster(null);
+  if (a === 'fuellen') { for (const p of freiePlaetze()) neueEpal(p); auswahl = null; aendere(); }
+});
 // + RHM: unter das ausgewählte Ladegut bzw. die ausgewählte Palette legen, sonst an die nächste freie Stelle
 $('rhm-neu').addEventListener('click', () => {
   const sel = gewaehltesObjekt();
