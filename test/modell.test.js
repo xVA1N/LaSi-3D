@@ -297,3 +297,19 @@ test('Niederzurrgurt liegt straff an den Kanten: niedrigere Ladung daneben wird 
   const gleich = pruefe({ objekte: [kiste('a', 0, -0.62, { b: 1.2 }), kiste('b', 0, 0.62, { b: 1.2 })], flaeche, gurte: [gurt('g', 0)] });
   assert.equal(gleich.gurte[0].getroffen.length, 2);
 });
+
+test('Verbändern: Fuge Ladung/EPAL zählt nicht mehr, nur EPAL auf der Fläche', async () => {
+  const { ladeeinheiten } = await import('../src/modell.js');
+  const { bandPalette } = await import('../src/aktionen.js');
+  const { stapeln: st } = await import('../src/modell.js');
+  const pal = { id: 'p', typ: 'palette', art: 'europalette', material: 'holz', masse: 25, l: 1.2, b: 0.8, h: 0.144, x: 0, z: 0, drehung: 0 };
+  const last = { id: 'k', typ: 'ladung', material: 'kunststoff', masse: 300, l: 1.2, b: 0.8, h: 1, x: 0, z: 0, drehung: 0 };
+  const rhm = { id: 'm', typ: 'rhm', material: 'rhm', masse: 0, l: 1.2, b: 0.8, h: 0.008, x: 0, z: 0, drehung: 0 };
+  assert.equal(ladeeinheiten([pal, last]).einheiten[0].mu, 0.2); // Kunststoff auf Holz
+  const o = [rhm, { ...pal, verbaendert: true }, last];
+  const e = ladeeinheiten(o).einheiten[0];
+  assert.equal(e.mu, 0.6); // nur noch EPAL auf RHM
+  assert.equal(e.verbaendert, true);
+  assert.equal(bandPalette(o, st(o), last).id, 'p');
+  assert.equal(bandPalette(o, st(o), o[1]).id, 'p');
+});

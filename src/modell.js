@@ -86,7 +86,10 @@ export function ladeeinheiten(objekte) {
     // leere liegende Paletten sind selbst Ladung (Leergut); hochkant stehende sind Lastverteiler/Füllmittel
     if (!mitglieder.some((o) => o.typ === 'ladung') && (w.typ !== 'palette' || w.hochkant)) continue;
     const masse = mitglieder.reduce((s, o) => s + o.masse, 0);
-    const mu = Math.min(...mitglieder.map((o) => fugenReibung(o, lage.get(o.id).traeger)));
+    // verbänderte EPAL: Ladung und Palette sind fest verbunden, die Fugen darüber zählen nicht
+    const fest = (o) => { for (let t = lage.get(o.id).traeger; t; t = lage.get(t.id).traeger) if (t.typ === 'palette' && t.verbaendert && !t.hochkant) return true; return false; };
+    const mu = Math.min(...mitglieder.filter((o) => !fest(o)).map((o) => fugenReibung(o, lage.get(o.id).traeger)));
+    const verbaendert = mitglieder.some((o) => o.typ === 'palette' && o.verbaendert && !o.hochkant && mitglieder.some((m) => m.typ === 'ladung' && fest(m)));
     const fs = mitglieder.map(fussabdruck);
     const f = { x0: Math.min(...fs.map((a) => a.x0)), x1: Math.max(...fs.map((a) => a.x1)), z0: Math.min(...fs.map((a) => a.z0)), z1: Math.max(...fs.map((a) => a.z1)) };
     const hoehe = Math.max(...mitglieder.map((o) => lage.get(o.id).y + o.h));
@@ -95,7 +98,7 @@ export function ladeeinheiten(objekte) {
     // liegende Rohre ohne Keile rollen quer zu ihrer Achse
     const rund = mitglieder.filter((o) => o.form === 'rohr');
     const rollt = rund.length && !rund.every((o) => o.keile) ? (rund[0].drehung === 90 ? ['vorwaerts', 'rueckwaerts'] : ['seitlich']) : [];
-    einheiten.push({ id: w.id, mitglieder, masse, mu, f, basis, hoehe, schwerpunkt, rhm: lage.get(w.id).traeger?.typ === 'rhm', rollt, rund: rund.length > 0 });
+    einheiten.push({ id: w.id, mitglieder, masse, mu, f, basis, hoehe, schwerpunkt, rhm: lage.get(w.id).traeger?.typ === 'rhm', rollt, rund: rund.length > 0, verbaendert });
   }
   return { einheiten, lage };
 }

@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { pruefe, fussabdruck, fugenReibung, rechenkraftDaN, kopfLage, ladereihen, naechsterZurrpunkt, STIRNWAND_KRAFT_N, MU_RHM, ZURRPUNKT_AUSSEN } from './modell.js';
 import { FAHRZEUGE, LADEGUT, HILFSMITTEL, GURTTYPEN, MATERIALIEN, beispiel } from './daten.js';
-import { bewegGruppe, vereinigung, anWand, abstandSeiten, zentriere, ohneRhm, verschiebe, abstandVorne, unterlage, setzeUnterlage, freierGurtX, stellplaetze, platzFrei, stapelPlatz, UEBERSTAND_MAX } from './aktionen.js';
+import { bewegGruppe, vereinigung, anWand, abstandSeiten, zentriere, ohneRhm, bandPalette, verschiebe, abstandVorne, unterlage, setzeUnterlage, freierGurtX, stellplaetze, platzFrei, stapelPlatz, UEBERSTAND_MAX } from './aktionen.js';
 import { pruefeUebermass, GRENZEN } from './uebermass.js';
 import { pruefeAchslasten, lastverteilungsplan } from './achslast.js';
 import { MANOEVER, startzustand, schritt, auswertung } from './fahrt.js';
@@ -504,6 +504,7 @@ function zeichne() {
     const gew = auswahl?.art === 'objekt' && auswahl.id === o.id;
     baueObjekt(o, ergebnis.lage.get(o.id).y, o.typ !== 'rhm' ? status.get(o.id) : undefined, gew, o.hochkant && deckNachMinus(o));
   }
+  baueBaender();
   for (const g of zustand.gurte) {
     const info = ergebnis.gurte.find((i) => i.id === g.id), gew = auswahl?.art === 'gurt' && auswahl.id === g.id;
     const vorher = ladungGruppe.children.length;
@@ -516,6 +517,31 @@ function zeichne() {
   baueUebermass();
   baueMarken();
   baueMini();
+}
+
+// Verbänderte EPAL: zwei Umreifungsbänder um Palette und Ladung
+const bandMat = new THREE.MeshStandardMaterial({ color: 0x1fa25a, roughness: 0.5 });
+function baueBaender() {
+  const H = fahrzeug().hoehe, lage = ergebnis.lage;
+  for (const p of zustand.objekte) {
+    if (p.typ !== 'palette' || !p.verbaendert || p.hochkant) continue;
+    const ueber = zustand.objekte.filter((o) => { for (let t = lage.get(o.id)?.traeger; t; t = lage.get(t.id)?.traeger) if (t.id === p.id) return true; return false; });
+    if (!ueber.some((o) => o.typ === 'ladung')) continue;
+    const fs = [p, ...ueber].map(fussabdruck);
+    const f = { x0: Math.min(...fs.map((a) => a.x0)), x1: Math.max(...fs.map((a) => a.x1)), z0: Math.min(...fs.map((a) => a.z0)), z1: Math.max(...fs.map((a) => a.z1)) };
+    const y0 = H + lage.get(p.id).y + 0.02, y1 = H + Math.max(...ueber.map((o) => lage.get(o.id).y + o.h)) + 0.006;
+    const laengs = f.x1 - f.x0 >= f.z1 - f.z0; // Bänder quer zur langen Seite
+    const [a0, a1, q0, q1] = laengs ? [f.x0, f.x1, f.z0 - 0.006, f.z1 + 0.006] : [f.z0, f.z1, f.x0 - 0.006, f.x1 + 0.006];
+    for (const t of [0.25, 0.75]) {
+      const a = a0 + (a1 - a0) * t, d = 0.032, dick = 0.008;
+      const teile = [[q1 - q0, dick, (q0 + q1) / 2, y1], [dick, y1 - y0, q0, (y0 + y1) / 2], [dick, y1 - y0, q1, (y0 + y1) / 2]];
+      for (const [lq, hy, q, y] of teile) {
+        const m = laengs ? kasten(d, hy, lq, bandMat, a, y, q) : kasten(lq, hy, d, bandMat, q, y, a);
+        m.castShadow = false;
+        ladungGruppe.add(m);
+      }
+    }
+  }
 }
 
 // EPAL-Stellplätze: freie Plätze als helle Felder zum Antippen
@@ -980,7 +1006,7 @@ function einheitName(e) {
     const p = e.einheit.mitglieder.filter((o) => o.typ === 'palette').length;
     return `${p > 1 ? `${p} × ` : ''}EPAL, leer${e.einheit.rhm ? ', RHM darunter' : ''}`;
   }
-  if (e.einheit.mitglieder.some((o) => o.typ === 'palette')) name += ' auf EPAL';
+  if (e.einheit.mitglieder.some((o) => o.typ === 'palette')) name += e.einheit.verbaendert ? ' auf EPAL, verbändert' : ' auf EPAL';
   if (e.einheit.rhm) name += ', RHM darunter';
   return name;
 }
@@ -1165,8 +1191,10 @@ function zeigeLeiste() {
     $('leiste-titel').textContent = `${reihe ? `LR${reihe.nr} · ` : ''}${o.typ === 'rhm' ? o.name : `${o.name} · ${zahl(o.masse, 0)} kg`}`;
     $('pad').classList.remove('nur-laengs');
     $('leiste-knoepfe').classList.add('vier');
+    const band = bandPalette(zustand.objekte, ergebnis.lage, o);
     $('leiste-knoepfe').innerHTML = knopf('anwand', '⇧', 'An Wand') + knopf('mitte', '⇹', 'Mitte') + knopf('drehen', '⟳', 'Drehen', o.form === 'zylinder' ? 'disabled' : '')
-      + (o.art === 'europalette' ? knopf('hochkant', o.hochkant ? '⤓' : '⤒', o.hochkant ? 'Hinlegen' : 'Hochkant', traegtLast(o) ? 'disabled title="Erst die Ladung herunternehmen"' : '') : '')
+      + (band ? knopf('verband', '▥', band.verbaendert ? 'Band lösen' : 'Verbändern', band.verbaendert ? 'class="an"' : '')
+        : o.art === 'europalette' ? knopf('hochkant', o.hochkant ? '⤓' : '⤒', o.hochkant ? 'Hinlegen' : 'Hochkant', traegtLast(o) ? 'disabled title="Erst die Ladung herunternehmen"' : '') : '')
       + knopf('gurt', '⇵', 'Gurt +', o.typ === 'rhm' ? 'disabled' : '') + knopf('bearbeiten', '✎', 'Bearbeiten') + knopf('kopieren', '⧉', 'Kopieren') + knopf('loeschen', '🗑', 'Löschen', 'class="rot"');
   } else {
     status = gurtStatus(g);
@@ -1217,6 +1245,7 @@ function fuehreAus(aktion) {
     const { wurzel, gruppe } = bewegGruppe(zustand.objekte, ergebnis.lage, o);
     if (aktion === 'anwand') anWand(zustand.objekte, ergebnis.lage, o, fahrzeug());
     if (aktion === 'mitte') zentriere(zustand.objekte, ergebnis.lage, o);
+    if (aktion === 'verband') { const p = bandPalette(zustand.objekte, ergebnis.lage, o); if (p) p.verbaendert = !p.verbaendert; }
     if (aktion === 'drehen') {
       // Quer- und Längsmaß tauschen; Teile auf der Einheit drehen mit
       for (const a of gruppe) {

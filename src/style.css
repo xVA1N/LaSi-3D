@@ -246,3 +246,4 @@ li.pflicht { color: #b26a00; }
 .bild .anker { fill: var(--leise); } .bild .achse { stroke: var(--leise); stroke-dasharray: 4 3; }
 .formel.klein { white-space: nowrap; font-size: .92rem; }
 .bild .in { fill: #3a2410; font: italic 700 14px serif; }
+.icons button.an { background: #2f8a4a; color: #fff; }
