@@ -630,10 +630,15 @@ function baueAchslast() {
     const aufkleber = new THREE.Mesh(new THREE.PlaneGeometry(0.42, 0.42).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: spTextur() }));
     aufkleber.position.set(sp.x, H + 0.006, sp.z);
     ladungGruppe.add(aufkleber);
-    ladungGruppe.add(kasten(0.02, 0.9, 0.02, mat(0x1d2420), sp.x, H + 0.45, sp.z));
+    // roter Strich senkrecht vom Schwerpunkt bis über die höchste Ladung, auch durch die Ladung sichtbar
+    const oben = Math.max(0.6, ...zustand.objekte.map((o) => (ergebnis.lage.get(o.id)?.y ?? 0) + o.h)) + 0.35;
+    const strich = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, oben, 12), new THREE.MeshBasicMaterial({ color: 0xe53935, depthTest: false, transparent: true }));
+    strich.position.set(sp.x, H + oben / 2, sp.z);
+    strich.renderOrder = 8;
+    ladungGruppe.add(strich);
     const schild = new THREE.Sprite(new THREE.SpriteMaterial({ map: spTextur(), depthTest: false }));
     schild.scale.set(0.45, 0.45, 1);
-    schild.position.set(sp.x, H + 1.1, sp.z);
+    schild.position.set(sp.x, H + oben + 0.2, sp.z);
     schild.renderOrder = 9;
     ladungGruppe.add(schild);
   }
@@ -728,7 +733,7 @@ function baueMarken() {
     marke(uebermass.zuBreit ? 'warnung' : 'mass', `seitlich ${laenge(seitlich)} · Breite ${zahl(uebermass.breite, 2)} m`,
       new THREE.Vector3(teil.x, H + ergebnis.lage.get(teil.id).y + teil.h, rechts ? f.z1 : f.z0));
   }
-  if (achs.schwerpunkt.masse > 0 && zeigeSchwerpunkt && ansicht === '3d') marke('mass', `${SCHWERPUNKT_SVG(14)} Schwerpunkt`, new THREE.Vector3(achs.schwerpunkt.x, H + 1.45, achs.schwerpunkt.z));
+  if (achs.schwerpunkt.masse > 0 && zeigeSchwerpunkt && ansicht === '3d') marke('mass', `${SCHWERPUNKT_SVG(14)} Schwerpunkt`, new THREE.Vector3(achs.schwerpunkt.x, H + Math.max(0.6, ...zustand.objekte.map((o) => (ergebnis.lage.get(o.id)?.y ?? 0) + o.h)) + 0.85, achs.schwerpunkt.z));
   for (const a of achs.achsen) if (!a.ok) marke('warnung', `${a.name}: ${zahl(a.last / 1000, 1)} t`, new THREE.Vector3(a.x, 1.3, B / 2));
   for (const a of einzelachsen()) marke(`achsnr ${a.last > a.max + 1e-6 ? 'zu' : ''}`, a.nr, new THREE.Vector3(a.x, 0.5, B / 2 + 0.05));
   if (achs.zapfen) marke('achsnr zapfen', '⊙', new THREE.Vector3(achs.zapfen.x, H - 0.3, B / 2 + 0.05));
