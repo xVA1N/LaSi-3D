@@ -102,13 +102,33 @@ export function ladeeinheiten(objekte) {
 
 /** Welche Einheiten ein Gurt bei x überspannt, mit dem wirksamen Zurrwinkel */
 export function gurtLage(gurt, einheiten, flaecheBreite) {
-  const getroffen = einheiten.filter((e) => gurt.x > e.f.x0 && gurt.x < e.f.x1);
-  if (!getroffen.length) return { getroffen, sinAlpha: 0, winkel: 0 };
+  const B = flaecheBreite / 2;
+  const unter = einheiten.filter((e) => gurt.x > e.f.x0 && gurt.x < e.f.x1);
+  if (!unter.length) return { getroffen: [], sinAlpha: 0, winkel: 0, weg: [] };
+  // Querschnitt bei x: Zurrpunkte und obere Kanten. Der gespannte Gurt liegt auf der oberen konvexen Hülle.
+  // bei gleicher Querlage links aufsteigend, rechts absteigend sortieren, damit beide Zurrpunkte Endpunkte bleiben
+  const punkte = [[-B, 0], [B, 0], ...unter.flatMap((e) => [[e.f.z0, e.hoehe], [e.f.z1, e.hoehe]])]
+    .sort((a, b) => a[0] - b[0] || (a[0] < 0 ? a[1] - b[1] : b[1] - a[1]));
+  const kreuz = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+  const weg = [];
+  for (const p of punkte) {
+    while (weg.length >= 2 && kreuz(weg[weg.length - 2], weg[weg.length - 1], p) >= -1e-12) weg.pop();
+    weg.push(p);
+  }
+  const hoeheBei = (z) => {
+    for (let i = 0; i < weg.length - 1; i++) {
+      const [z0, y0] = weg[i], [z1, y1] = weg[i + 1];
+      if (z >= z0 - 1e-9 && z <= z1 + 1e-9) return z1 - z0 < 1e-9 ? Math.max(y0, y1) : y0 + ((y1 - y0) * (z - z0)) / (z1 - z0);
+    }
+    return 0;
+  };
+  // Niedergehalten wird nur, was der Gurt auch berührt
+  const getroffen = unter.filter((e) => [e.f.z0, e.f.z1].some((z) => hoeheBei(z) - e.hoehe < 0.01));
+  const sinSchenkel = (a, b) => { const dz = Math.abs(b[0] - a[0]), dy = Math.abs(b[1] - a[1]); return dz <= 1e-6 ? 1 : dy / Math.hypot(dz, dy); };
+  const sinAlpha = (sinSchenkel(weg[0], weg[1]) + sinSchenkel(weg[weg.length - 1], weg[weg.length - 2])) / 2;
   const h = Math.max(...getroffen.map((e) => e.hoehe));
   const z0 = Math.min(...getroffen.map((e) => e.f.z0)), z1 = Math.max(...getroffen.map((e) => e.f.z1));
-  const seite = (abstand) => (abstand <= 1e-6 ? 1 : Math.sin(Math.atan2(h, abstand)));
-  const sinAlpha = (seite(z0 + flaecheBreite / 2) + seite(flaecheBreite / 2 - z1)) / 2;
-  return { getroffen, sinAlpha, winkel: (Math.asin(Math.min(sinAlpha, 1)) * 180) / Math.PI, hoehe: h, z0, z1 };
+  return { getroffen, sinAlpha, winkel: (Math.asin(Math.min(sinAlpha, 1)) * 180) / Math.PI, hoehe: h, z0, z1, weg };
 }
 
 // Direktzurren: Reibbeiwert wird mit f_μ = 0,75 abgemindert (EN 12195-1)
@@ -319,9 +339,9 @@ export function pruefe({ objekte, gurte, flaeche }) {
       return info;
     }
     const gl = gurtLage(g, einheiten, B);
-    const info = { id: g.id, winkel: gl.winkel, getroffen: gl.getroffen.map((e) => e.id), hoehe: gl.hoehe ?? 0, z0: gl.z0, z1: gl.z1 };
+    const info = { id: g.id, winkel: gl.winkel, getroffen: gl.getroffen.map((e) => e.id), hoehe: gl.hoehe ?? 0, z0: gl.z0, z1: gl.z1, weg: gl.weg };
     if (!gl.getroffen.length) return mangel(g, info, 'Gurt liegt auf keiner Ladung.');
-    const weg = [{ x: g.x, y: 0, z: -B / 2 }, { x: g.x, y: gl.hoehe, z: gl.z0 }, { x: g.x, y: gl.hoehe, z: gl.z1 }, { x: g.x, y: 0, z: B / 2 }];
+    const weg = gl.weg.map(([z, y]) => ({ x: g.x, y, z }));
     const hindernis = durch(weg, new Set(gl.getroffen.flatMap((e) => e.mitglieder.map((m) => m.id))));
     if (hindernis) return mangel(g, info, `Gurt läuft durch ${hindernis.name}.`);
     if (g.stf > g.lc / 2) hinweise.push({ art: 'gurt', id: g.id, text: `S_TF ${g.stf} daN ist mehr als 0,5 · LC; gerechnet wird mit ${g.lc / 2} daN.` });
