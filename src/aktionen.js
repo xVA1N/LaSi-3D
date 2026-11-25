@@ -135,6 +135,21 @@ export function ohneRhm(objekte, lage) {
     .sort((a, b) => b.x - a.x || a.z - b.z);
 }
 
+/** EPAL, mit der das Teil verbändert werden kann: die Palette selbst (wenn sie Ladung trägt) oder die darunter */
+export function bandPalette(objekte, lage, o) {
+  // Ladung direkt auf der Palette (auch mit RHM dazwischen)
+  const traegt = (p) => objekte.some((a) => {
+    if (a.typ !== 'ladung') return false;
+    let t = lage.get(a.id)?.traeger;
+    if (t?.typ === 'rhm') t = lage.get(t.id)?.traeger;
+    return t?.id === p.id;
+  });
+  if (o.typ === 'palette') return !o.hochkant && traegt(o) ? o : null;
+  if (o.typ !== 'ladung') return null;
+  for (let t = lage.get(o.id)?.traeger; t; t = lage.get(t.id)?.traeger) if (t.typ === 'palette') return t.hochkant ? null : t;
+  return null;
+}
+
 /** Freie Stelle für einen weiteren Gurt über einer Gruppe */
 export function freierGurtX(gurte, u) {
   const mitte = (u.x0 + u.x1) / 2;
