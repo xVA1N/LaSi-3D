@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { pruefe, fussabdruck, fugenReibung, rechenkraftDaN, kopfLage, ladereihen, naechsterZurrpunkt, STIRNWAND_KRAFT_N, MU_RHM, ZURRPUNKT_AUSSEN } from './modell.js';
 import { FAHRZEUGE, LADEGUT, HILFSMITTEL, GURTTYPEN, MATERIALIEN, beispiel } from './daten.js';
+import { methoden } from './methoden.js';
 import { bewegGruppe, vereinigung, anWand, abstandSeiten, zentriere, ohneRhm, bandPalette, verschiebe, abstandVorne, unterlage, setzeUnterlage, freierGurtX, stellplaetze, platzFrei, stapelPlatz, UEBERSTAND_MAX } from './aktionen.js';
 import { pruefeUebermass, GRENZEN } from './uebermass.js';
 import { pruefeAchslasten, lastverteilungsplan } from './achslast.js';
@@ -1498,10 +1499,14 @@ function oeffneGurtWahl() {
   const o = gewaehltesObjekt();
   const { ladung, seite } = gurtZiel(o);
   const e = ladung ? einheitVon(ladung) : null;
+  // jede Methode vorher probeweise anlegen und prüfen, ob sie hier überhaupt geht
+  const geht = ladung && !seite ? methoden(zustand, fahrzeug(), ladung.id) : null;
   const k = (art, titel, text) => {
-    const aus = art !== 'nieder' && (!e || (seite && !art.endsWith(seite)));
-    return `<button type="button" data-neu="${art}" ${aus ? 'disabled' : ''}><span>${titel}<small>${text}</small></span></button>`;
+    const nein = geht?.[art]?.ok === false ? geht[art].grund : null;
+    const aus = art !== 'nieder' && (!e || (seite && !art.endsWith(seite))) || !!nein;
+    return `<button type="button" data-neu="${art}" ${aus ? 'disabled' : ''}><span>${titel}<small>${nein ? `<span class="schlecht">✗ ${esc(nein)}</span>` : text}</small></span></button>`;
   };
+  const vt = geht?.verteiler;
   oeffneBlatt(`<h3 id="blatt-titel">Gurt hinzufügen</h3>
     <div class="katalog" style="grid-template-columns:1fr">
       ${k('nieder', 'Niederzurren', 'quer über die Ladung, drückt sie auf die Fläche')}
@@ -1512,7 +1517,7 @@ function oeffneGurtWahl() {
       ${seite ? '' : k('frei', 'Einzelgurt frei spannen', 'von einer Ecke zu einem beliebigen Zurrpunkt am Rahmen')}
       ${seite ? '' : k('bucht', 'Buchtlashing (Schlingen je Seite)', 'Schlinge um die Ladung, paarweise links und rechts; hält seitlich, auch gegen Rollen')}
     </div>
-    ${e && !seite ? `<div class="chips"><button type="button" data-verteiler class="${verteilerAn ? 'an' : ''}">EPAL hochkant als Lastverteiler dazustellen</button></div>` : ''}
+    ${e && !seite ? `<div class="chips"><button type="button" data-verteiler class="${verteilerAn && vt?.ok !== false ? 'an' : ''}" ${vt?.ok === false ? 'disabled' : ''}>EPAL hochkant als Lastverteiler dazustellen</button></div>${vt?.ok === false ? `<p class="werte schlecht">✗ EPAL als Lastverteiler: ${esc(vt.grund)}</p>` : ''}` : ''}
     ${seite ? '<p class="werte">Die Schlinge läuft um diese Palette und die Ladung dahinter.</p>' : ''}
     ${!e ? `<p class="werte">${o?.hochkant ? 'Für eine Kopfschlinge die Palette direkt an die Ladung stellen (Knopf „An Wand“ oder ziehen).' : 'Für eine Kopfschlinge zuerst Ladegut antippen.'}</p>` : ''}
     <div style="height:12px"></div>${fuss(false)}`);
@@ -1521,7 +1526,8 @@ function oeffneGurtWahl() {
 function neueKopfschlinge(o, seite) {
   const e = einheitVon(o);
   if (!e) return;
-  if (verteilerAn) {
+  const platz = methoden(zustand, fahrzeug(), o.id).verteiler;
+  if (verteilerAn && platz.ok && platz[seite]) {
     const k = kopfLage({ seite, abstand: 1 }, e.einheit, zustand.objekte.filter((p) => p.typ === 'palette' && p.hochkant), fahrzeug());
     if (!k.lastverteiler) {
       const { f } = e.einheit;
