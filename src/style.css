@@ -142,3 +142,13 @@ li.pflicht { color: #b26a00; }
 .achsbox { cursor: pointer; user-select: none; }
 .achsbox .kopf { display: flex; justify-content: space-between; gap: 8px; font-weight: 700; font-size: 11px; }
 .achsbox.zu-klein .inhalt { display: none; }
+
+.ansicht button.fahrt { background: #2e8a5c; color: #fff; }
+.fahrtband { position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%); width: max-content; max-width: calc(100% - 24px); background: var(--karte); border-radius: 14px; box-shadow: 0 6px 20px #0004; padding: 10px 14px; font-size: .9rem; }
+.fahrtband ul { margin: 6px 0; padding-left: 18px; font-size: .85rem; }
+.fahrtband .knoepfe { margin: 8px 0 0; }
+@media (max-width: 760px) {
+  .ansicht button { padding: 6px 8px; font-size: .8rem; }
+  .oben-links { max-width: calc(100% - 205px); }
+  .status { font-size: .8rem; }
+}
