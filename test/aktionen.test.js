@@ -91,3 +91,19 @@ test('EPAL-Stellplätze: Sattel 33 längs, 34 quer; kleiner Lkw 15 / 14', async 
   assert.equal(platzFrei(erster, belegt), false);
   assert.equal(platzFrei(stellplaetze(sattel, 'laengs')[1], belegt), true);
 });
+
+test('Alle Plätze voll: EPAL stapeln sich am ersten Platz bis zur Höhengrenze', async () => {
+  const { stellplaetze, stapelPlatz } = await import('../src/aktionen.js');
+  const sattel = { laenge: 13.6, breite: 2.48 };
+  const plaetze = stellplaetze(sattel, 'laengs');
+  const objekte = plaetze.map((p, i) => ({ ...palette(`p${i}`, p.x, p.z), drehung: p.drehung }));
+  let s = stapelPlatz(plaetze, objekte, stapeln(objekte), 2.8);
+  assert.deepEqual([s.platz.x, s.platz.z, s.y], [6.2, -0.8, 0.144]);
+  // bis 2,8 m passen 19 EPAL übereinander, dann geht es am zweiten Platz weiter
+  for (let n = 2; n <= 19; n++) objekte.push({ ...palette(`s${n}`, 6.2, -0.8) });
+  s = stapelPlatz(plaetze, objekte, stapeln(objekte), 2.8);
+  assert.deepEqual([s.platz.x, s.platz.z], [6.2, 0]);
+  // auf Ladung wird nicht gestapelt
+  const mitLadung = [palette('p', 6.2, -0.8), kiste('k', 6.2, -0.8)];
+  assert.equal(stapelPlatz([plaetze[0]], mitLadung, stapeln(mitLadung), 2.8), null);
+});

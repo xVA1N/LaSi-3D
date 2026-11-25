@@ -151,3 +151,23 @@ export function platzFrei(platz, objekte) {
     return f.x0 < p.x1 - 0.02 && p.x0 < f.x1 - 0.02 && f.z0 < p.z1 - 0.02 && p.z0 < f.z1 - 0.02;
   });
 }
+
+/**
+ * Wenn alle Stellplätze belegt sind: erster Platz, auf dem oben eine liegende EPAL liegt und noch eine
+ * weitere draufpasst (Oberkante höchstens maxHoehe über der Ladefläche). Gibt { platz, y } oder null zurück.
+ */
+export function stapelPlatz(plaetze, objekte, lage, maxHoehe) {
+  for (const p of plaetze) {
+    const drauf = objekte.filter((o) => {
+      if (o.typ === 'rhm') return false;
+      const f = fussabdruck(o);
+      return p.x > f.x0 && p.x < f.x1 && p.z > f.z0 && p.z < f.z1;
+    });
+    if (!drauf.length) continue;
+    const oben = drauf.reduce((a, b) => ((lage.get(b.id)?.y ?? 0) + b.h > (lage.get(a.id)?.y ?? 0) + a.h ? b : a));
+    if (oben.art !== 'europalette' || oben.hochkant) continue;
+    const y = (lage.get(oben.id)?.y ?? 0) + oben.h;
+    if (y + oben.h <= maxHoehe + 1e-9) return { platz: { ...p, x: oben.x, z: oben.z, drehung: oben.drehung }, y };
+  }
+  return null;
+}
