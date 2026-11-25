@@ -347,3 +347,12 @@ test('Zurrschiene: Gurte an beliebigen Stellen, höchstens 3 Positionen je Meter
   const vier = p({ objekte: [k], gurte: [gurt('a', 0), gurt('b', 0.3), gurt('c', 0.6), gurt('d', 0.9)], flaeche: f });
   assert.match(vier.hinweise.find((h) => h.art === 'zurrpunkt').text, /EN 12640/);
 });
+
+test('Kopfschlinge ohne Platz dahinter ist mangelhaft (auch bei runder Ladung)', async () => {
+  const { pruefe: p } = await import('../src/modell.js');
+  const kiste = { id: 'k', typ: 'ladung', name: 'Kiste', material: 'holz', masse: 500, l: 1.2, b: 0.8, h: 1, x: 0, z: 0, drehung: 0 };
+  const rolle = (x) => ({ id: 'r', typ: 'ladung', name: 'Papierrolle', form: 'zylinder', material: 'papier', masse: 1500, l: 1.2, b: 1.2, h: 1.4, x, z: 0, drehung: 0 });
+  const g = { id: 'g', art: 'kopf', ziel: 'k', seite: 'hinten', abstand: 1.0, lc: 2500, stf: 500 };
+  assert.match(p({ objekte: [kiste, rolle(-1.2)], gurte: [g], flaeche }).gurte[0].mangel, /Papierrolle steht direkt dahinter/);
+  assert.equal(p({ objekte: [kiste, rolle(-1.5)], gurte: [g], flaeche }).gurte[0].mangel, undefined);
+});

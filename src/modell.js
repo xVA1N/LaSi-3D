@@ -265,6 +265,37 @@ export function streckeTrifftQuader(a, b, q) {
   return true;
 }
 
+export const LUFT_KOPF = 0.03; // so viel Platz braucht die Schlinge vor bzw. hinter der Ladung
+export const PLATZ_VERTEILER = 0.144 + LUFT_KOPF; // hochkant gestellte EPAL plus Schlinge
+
+/**
+ * Freier Raum vor (seite 'vorne') bzw. hinter der Einheit bis zum nächsten Teil oder zur Stirnwand.
+ * Eine anliegende, hochkant stehende EPAL zählt als Lastverteiler zur Einheit.
+ * @returns {{ abstand:number, hindernis:object|null, verteiler:object|null, stirnwand:boolean }}
+ */
+export function freiraum(objekte, lage, einheit, flaeche, seite) {
+  const vorne = seite === 'vorne';
+  const ids = new Set(einheit.mitglieder.map((m) => m.id));
+  let kante = vorne ? einheit.f.x1 : einheit.f.x0, verteiler = null;
+  const { z0, z1 } = einheit.f, y1 = einheit.hoehe;
+  const davor = () => objekte
+    .filter((o) => o.typ !== 'rhm' && !ids.has(o.id) && o !== verteiler)
+    .map((o) => ({ o, f: fussabdruck(o), y: lage.get(o.id)?.y ?? 0 }))
+    .filter(({ f, y }) => Math.min(f.z1, z1) - Math.max(f.z0, z0) > 0.02 && y < y1 - 0.02
+      && (vorne ? f.x0 >= kante - 0.02 : f.x1 <= kante + 0.02))
+    .map((a) => ({ ...a, abstand: vorne ? a.f.x0 - kante : kante - a.f.x1 }))
+    .sort((a, b) => a.abstand - b.abstand)[0];
+  let n = davor();
+  if (n && n.o.typ === 'palette' && n.o.hochkant && n.abstand <= 0.03) {
+    verteiler = n.o;
+    kante = vorne ? n.f.x1 : n.f.x0;
+    n = davor();
+  }
+  const wand = vorne ? flaeche.laenge / 2 - kante : Infinity;
+  if (!n || wand < n.abstand) return { abstand: wand, hindernis: null, verteiler, stirnwand: vorne };
+  return { abstand: n.abstand, hindernis: n.o, verteiler, stirnwand: false };
+}
+
 /** Erstes Objekt, durch das ein Gurtweg (Punktliste) läuft; RHM und ausgenommene Teile zählen nicht */
 export function gurtKollision(punkte, objekte, lage, ausgenommen) {
   const rand = 0.02; // Berühren ist erlaubt
@@ -321,6 +352,9 @@ export function pruefe({ objekte, gurte, flaeche }) {
       const weg = [{ x: k.ankerX, y: 0, z: -Bz }, { x: k.x, y: k.y, z: k.z0 }, { x: k.x, y: k.y, z: k.z1 }, { x: k.ankerX, y: 0, z: Bz }];
       const hindernis = durch(weg, mitgliedIds(e, k.lastverteiler?.id));
       if (hindernis) return mangel(g, info, `Kopfschlinge läuft durch ${hindernis.name}.`);
+      // Die Schlinge braucht Platz vor bzw. hinter der Fläche
+      const raum = freiraum(objekte, lage, e, flaeche, g.seite === 'vorne' ? 'vorne' : 'hinten');
+      if (raum.abstand < LUFT_KOPF) return mangel(g, info, raum.stirnwand ? 'Kopfschlinge an der Stirnwand geht nicht (dort Formschluss).' : `Kein Platz für die Schlinge: ${raum.hindernis.name} steht direkt ${g.seite === 'vorne' ? 'davor' : 'dahinter'}.`);
       const zulKopf = zp.lc * winkelFaktor(zp, k.winkel), lcKopf = Math.min(g.lc, zulKopf);
       info.punkt = punktLast(g, k.ankerX, -1, lcKopf, k.winkel);
       punktLast(g, k.ankerX, 1, lcKopf, k.winkel);
