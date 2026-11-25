@@ -179,3 +179,31 @@ li.pflicht { color: #b26a00; }
 .anzeigemenue { position: absolute; right: 12px; top: 56px; z-index: 3; background: var(--karte); border-radius: 12px; box-shadow: 0 6px 20px #0004; padding: 10px 12px; font-size: .9rem; }
 .anzeigemenue .chips { flex-direction: column; align-items: stretch; margin-top: 6px; }
 .anzeigemenue .chips button { text-align: left; }
+
+/* Startseite und Rechner */
+.layout[hidden], .start[hidden] { display: none; }
+.start { max-width: 720px; margin: 0 auto; padding: calc(20px + env(safe-area-inset-top)) 16px 32px; }
+.start h2 { margin: 26px 0 10px; font-size: 1.1rem; }
+.haupt-karte { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; padding: 22px 20px; border-radius: 18px; background: linear-gradient(135deg, #2f4f62, #2e8a5c); color: #fff; text-decoration: none; box-shadow: 0 6px 20px #0003; }
+.haupt-karte .gross { font-size: 1.5rem; font-weight: 800; }
+.haupt-karte .los { margin-top: 10px; align-self: flex-start; background: #fff; color: #2f4f62; font-weight: 700; padding: 8px 14px; border-radius: 10px; }
+.rechnerliste { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+.karte { display: flex; gap: 12px; align-items: center; padding: 14px; border-radius: 14px; background: var(--karte); color: var(--text); text-decoration: none; border: 1px solid var(--rand); }
+.karte i, .rechner h1 .sym { display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; flex: none; border-radius: 10px; background: var(--knopf); color: var(--knopf-text); font-style: normal; font-size: 20px; font-weight: 700; }
+.karte b { display: block; } .karte small { color: var(--leise); font-size: .85rem; }
+.zurueck { display: inline-block; margin-bottom: 10px; color: var(--knopf); font-weight: 600; text-decoration: none; }
+.rechner h1 { display: flex; align-items: center; gap: 10px; }
+.rechner h1 .sym { width: 34px; height: 34px; font-size: 18px; }
+.rechner-form { margin: 18px 0 8px; }
+.rechner-form label[hidden] { display: none; }
+.rechner-form input { display: block; width: 100%; padding: 10px; font: inherit; color: var(--text); background: var(--karte); border: 1px solid var(--rand); border-radius: 10px; }
+.rechner-form select { background: var(--karte); }
+.mit-einheit { position: relative; display: block; margin-top: 4px; }
+.mit-einheit em { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); font-style: normal; color: var(--leise); pointer-events: none; }
+.rechner .einheit { cursor: default; background: var(--karte); }
+.rechner .einheit b { font-size: 1.1rem; }
+.rechner .einheit table { font-size: .95rem; margin-top: 8px; }
+.rechner .einheit td { padding: 3px 0; }
+.rechner tr.fett td { font-weight: 700; }
+.rechner-form input { padding-right: 48px; -moz-appearance: textfield; }
+.rechner-form input::-webkit-outer-spin-button, .rechner-form input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
