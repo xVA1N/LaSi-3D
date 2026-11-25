@@ -7,7 +7,27 @@
   <link rel="stylesheet" href="./src/style.css">
 </head>
 <body>
-  <main class="layout">
+  <div id="start" class="start">
+    <header>
+      <h1>LaSi 3D</h1>
+      <p class="unter">Ladungssicherung am Lkw: üben, nachrechnen, verstehen</p>
+    </header>
+    <a class="haupt-karte" href="#3d">
+      <span class="gross">Ladungssicherung 3D</span>
+      <span>Simulator: Ladung platzieren, sichern und mit Fahrt prüfen</span>
+      <span class="los">Öffnen →</span>
+    </a>
+    <h2>Berechnung durchführen</h2>
+    <div id="rechnerliste" class="rechnerliste"></div>
+    <p class="hinweis">Lernhilfe nach dem Verfahren der EN 12195-1. Reibbeiwerte sind Richtwerte. Im Einsatz gelten Norm, Zertifikate und Herstellerangaben.</p>
+  </div>
+
+  <div id="rechner" class="start rechner" hidden>
+    <a class="zurueck" href="#">← Übersicht</a>
+    <div id="rechner-inhalt"></div>
+  </div>
+
+  <main class="layout" hidden>
     <section id="szene" aria-label="Ansicht der Ladefläche">
       <div id="marken" aria-hidden="true"></div>
       <div class="oben-links">
@@ -42,7 +62,8 @@
 
     <aside class="panel">
       <header>
-        <h1>LaSi 3D</h1>
+        <a class="zurueck" href="#">← Übersicht</a>
+        <h1>Ladungssicherung 3D</h1>
         <p class="unter">Ladung platzieren, sichern, nachrechnen</p>
       </header>
 
@@ -82,6 +103,6 @@
       <div id="blatt-inhalt"></div>
     </div>
   </div>
-  <script type="module" src="./src/main.js"></script>
+  <script type="module" src="./src/start.js"></script>
 </body>
 </html>

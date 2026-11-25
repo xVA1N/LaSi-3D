@@ -15,7 +15,8 @@ async function neueSeite(optionen) {
   const seite = await (await browser.newContext(optionen)).newPage();
   seite.on('pageerror', (e) => fehler.push(e.message));
   seite.on('console', (m) => m.type() === 'error' && fehler.push(m.text()));
-  await seite.goto(url);
+  await seite.goto(`${url}#3d`);
+  await seite.waitForFunction(() => window.lasi);
   await seite.waitForSelector('#status');
   await seite.waitForTimeout(200);
   return seite;
@@ -220,7 +221,11 @@ const kisteR = lz.objekte.find((o) => o.id === rk), rhmNeu = lz.objekte.at(-1);
 pruefe(lz.objekte.length === vorRhm + 1 && rhmNeu.typ === 'rhm' && rhmNeu.x === kisteR.x && rhmNeu.z === kisteR.z, '+ RHM legt das RHM unter das ausgewählte Ladegut');
 pruefe((await seite.textContent(`[data-waehle="${rk}"]`)).includes('RHM darunter'), 'Prüfung zeigt „RHM darunter“');
 await seite.click('#rhm-neu'); await kurz();
-pruefe((await lage()).objekte.length === vorRhm + 1, 'Zweites + RHM legt kein doppeltes RHM darunter');
+{
+  const z2 = await lage();
+  const unterKiste = z2.objekte.filter((o) => o.typ === 'rhm' && o.x === kisteR.x && o.z === kisteR.z).length;
+  pruefe(unterKiste === 1 && z2.objekte.length === vorRhm + 2, 'Zweites + RHM geht an ein anderes Teil, kein doppeltes RHM darunter');
+}
 await seite.click('[data-aktion="loeschen"]'); await kurz();
 await seite.mouse.click(5, 300); await kurz(); // Auswahl aufheben
 await seite.click('#rhm-neu'); await kurz();
