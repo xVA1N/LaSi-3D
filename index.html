@@ -87,6 +87,14 @@
       <section class="block">
         <label>Fahrzeug <select id="fahrzeug"></select></label>
         <label>Nutzlast in kg (aus dem Fahrzeugschein) <input id="nutzlast" type="number" inputmode="numeric" min="100" step="100"></label>
+        <label>Zurrpunkte am Rahmen <select id="zp-art">
+          <option value="en12640">Zurrpunkt nach EN 12640</option>
+          <option value="winkel">Anschlagpunkt/Schäkel (Belastungswinkel)</option>
+        </select></label>
+        <label id="zp-lc-feld">LC je Zurrpunkt in daN <input id="zp-lc" type="number" inputmode="numeric" min="100" step="100"></label>
+        <label id="zp-wll-feld" hidden>WLL in t (als Zurrmittel × 2) <input id="zp-wll" type="number" inputmode="decimal" min="0.5" step="0.5"></label>
+        <p class="tipp" id="zp-info"></p>
+        <p class="tipp">Höchstens 3 Gurte je Meter Rahmen und Seite.</p>
         <div class="knoepfe">
           <button id="beispiel" type="button" class="leise">Beispiel laden</button>
           <button id="leeren" type="button" class="leise">Alles entfernen</button>

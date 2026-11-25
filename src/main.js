@@ -28,6 +28,9 @@ let platzMuster = null; // null | 'laengs' | 'quer': EPAL-Stellplätze eingeblen
 try { platzMuster = ['laengs', 'quer'].includes(localStorage.getItem('lasi3d-plaetze')) ? localStorage.getItem('lasi3d-plaetze') : null; } catch { /* egal */ }
 const neueId = (p) => `${p}${Date.now().toString(36)}${++zaehler}`;
 const fahrzeug = () => FAHRZEUGE.find((f) => f.id === zustand.fahrzeugId) ?? FAHRZEUGE[0];
+// Zurrpunkte am Rahmen: nach EN 12640 (LC je nach Fahrzeug) oder Anschlagpunkt/Schäkel mit Belastungswinkel
+const zurrpunkt = () => zustand.zurrpunkt ?? { art: 'en12640', lc: fahrzeug().zurrpunktLC ?? 2000 };
+const flaeche = () => ({ ...fahrzeug(), zurrpunkt: zurrpunkt() });
 const objekt = (id) => zustand.objekte.find((o) => o.id === id);
 const gurt = (id) => zustand.gurte.find((g) => g.id === id);
 const gewaehltesObjekt = () => (auswahl?.art === 'objekt' ? objekt(auswahl.id) : null);
@@ -973,7 +976,7 @@ renderer.setAnimationLoop(() => {
 let geplant = false;
 function aktualisiere() {
   zustand.gurte = zustand.gurte.filter((g) => !g.ziel || objekt(g.ziel));
-  ergebnis = pruefe({ ...zustand, flaeche: fahrzeug() });
+  ergebnis = pruefe({ ...zustand, flaeche: flaeche() });
   achs = pruefeAchslasten({ objekte: zustand.objekte, fahrzeug: fahrzeug() });
   reihen = ladereihen(ergebnis.ergebnisse.map((e) => e.einheit));
   uebermass = pruefeUebermass({ objekte: zustand.objekte, lage: ergebnis.lage, fahrzeug: fahrzeug(), nutzlast: zustand.nutzlast });
@@ -1035,6 +1038,14 @@ function objektStatus(o) {
 const einheitVon = (o) => ergebnis.ergebnisse.find((x) => x.einheit.mitglieder.some((m) => m.id === o.id));
 const SEITE = { hinten: 'hinten', vorne: 'vorne' };
 function gurtStatus(g) {
+  const s = gurtStatusText(g);
+  const info = ergebnis.gurte.find((i) => i.id === g.id);
+  if (!s.ok || !info?.punkt) return s;
+  const p = info.punkt, begrenzt = info.lcWirksam != null && info.lcWirksam < g.lc - 1e-9;
+  const winkel = p.faktor < 1 ? ` (${Math.round(p.theta)}° → ${Math.round(p.faktor * 100)} %)` : '';
+  return { ok: true, text: `${s.text} · Zurrpunkt ${zahl(p.last, 0)}/${zahl(p.zul, 0)} daN${winkel}${begrenzt ? ` · zählt mit LC ${zahl(info.lcWirksam, 0)} daN` : ''}` };
+}
+function gurtStatusText(g) {
   const info = ergebnis.gurte.find((i) => i.id === g.id);
   if (info?.mangel) return { ok: false, text: `✗ Zurrmittel mangelhaft: ${info.mangel}` };
   if (g.art === 'bucht') {
@@ -1143,7 +1154,7 @@ function zeigeErgebnis() {
   const alles = r.ok && um.ok && achs.ok;
   $('status').textContent = leer ? 'Keine Ladung'
     : alles ? `✓ Ladung gesichert${um.meldungen.some((m) => m.stufe === 'pflicht') ? ' · Kennzeichnung nötig' : ''}`
-    : `✗ ${[r.hinweise.some((h) => h.art === 'gurt-mangel') ? 'Zurrmittel mangelhaft' : '', offen ? `${offen} nicht gesichert` : '', r.hinweise.some((h) => h.art === 'lose') ? 'lose Teile' : '', umFehler.length ? 'Übermaß' : '', achs.ok ? '' : 'Achslast'].filter(Boolean).join(' · ') || 'Hinweise prüfen'}`;
+    : `✗ ${[r.hinweise.some((h) => h.art === 'gurt-mangel') ? 'Zurrmittel mangelhaft' : '', r.hinweise.some((h) => h.art === 'zurrpunkt') ? 'Zurrpunkte' : '', offen ? `${offen} nicht gesichert` : '', r.hinweise.some((h) => h.art === 'lose') ? 'lose Teile' : '', umFehler.length ? 'Übermaß' : '', achs.ok ? '' : 'Achslast'].filter(Boolean).join(' · ') || 'Hinweise prüfen'}`;
   $('status').className = `status ${leer ? '' : alles ? 'gut' : 'schlecht'}`;
   const zeile = (name, wert, grenze, ok) => `<tr><td>${name}</td><td class="${ok ? 'gut' : 'schlecht'}">${wert}</td><td>${grenze}</td></tr>`;
   const m2 = (v) => `${zahl(v, 2)} m`;
@@ -1254,7 +1265,7 @@ function fuehreAus(aktion) {
         a.x = wurzel.x + dz; a.z = wurzel.z + dx;
         if (a.form !== 'zylinder') a.drehung = a.drehung === 90 ? 0 : 90;
       }
-      ergebnis = pruefe({ ...zustand, flaeche: fahrzeug() });
+      ergebnis = pruefe({ ...zustand, flaeche: flaeche() });
       verschiebe(zustand.objekte, ergebnis.lage, o, 0, 0, fahrzeug());
     }
     if (aktion === 'gurt') { oeffneGurtWahl(); return; }
@@ -1468,8 +1479,23 @@ function neueDirektzurrung(ladung, variante) {
   const anschlag = Math.round(Math.min(0.5, e.einheit.hoehe / 2) * 100) / 100;
   const neu = ['vl', 'vr', 'hl', 'hr'].map((ecke) => ({ id: neueId('g'), art: 'direkt', variante, gruppe, ziel: ladung.id, ecke, abstand: variante === 'diagonal' ? 1.0 : 0, anschlag, lc: 2500, stf: 500 }));
   zustand.gurte.push(...neu);
+  if (variante === 'diagonal') freieZurrpunkte(neu, (a) => { for (const g of neu) g.abstand = a; });
   auswahl = { art: 'gurt', id: neu[3].id };
   aendere();
+}
+
+// Neue Gurte an Zurrpunkte legen, die nicht schon belegt sind (kein überlasteter Punkt, höchstens 3 je Meter)
+function freieZurrpunkte(neu, setze) {
+  const ids = new Set(neu.map((g) => g.id));
+  let ersatz = null;
+  for (const a of [1.0, 1.5, 0.5, 2.0, 2.5, 0.75, 1.25]) {
+    setze(a);
+    const r = pruefe({ ...zustand, flaeche: flaeche() });
+    if (r.hinweise.some((h) => h.art === 'gurt-mangel' && ids.has(h.id))) continue; // läuft durch etwas
+    if (!r.hinweise.some((h) => h.art === 'zurrpunkt' && h.ids.some((i) => ids.has(i)))) return;
+    ersatz ??= a;
+  }
+  setze(ersatz ?? 1.0);
 }
 
 let verteilerAn = true;
@@ -1500,7 +1526,7 @@ function oeffneGurtWahl() {
   const { ladung, seite } = gurtZiel(o);
   const e = ladung ? einheitVon(ladung) : null;
   // jede Methode vorher probeweise anlegen und prüfen, ob sie hier überhaupt geht
-  const geht = ladung && !seite ? methoden(zustand, fahrzeug(), ladung.id) : null;
+  const geht = ladung && !seite ? methoden(zustand, flaeche(), ladung.id) : null;
   const k = (art, titel, text) => {
     const nein = geht?.[art]?.ok === false ? geht[art].grund : null;
     const aus = art !== 'nieder' && (!e || (seite && !art.endsWith(seite))) || !!nein;
@@ -1526,7 +1552,7 @@ function oeffneGurtWahl() {
 function neueKopfschlinge(o, seite) {
   const e = einheitVon(o);
   if (!e) return;
-  const platz = methoden(zustand, fahrzeug(), o.id).verteiler;
+  const platz = methoden(zustand, flaeche(), o.id).verteiler;
   if (verteilerAn && platz.ok && platz[seite]) {
     const k = kopfLage({ seite, abstand: 1 }, e.einheit, zustand.objekte.filter((p) => p.typ === 'palette' && p.hochkant), fahrzeug());
     if (!k.lastverteiler) {
@@ -1542,6 +1568,7 @@ function neueKopfschlinge(o, seite) {
   }
   const g = { id: neueId('g'), art: 'kopf', ziel: o.id, seite, abstand: 1.0, lc: 2500, stf: 500 };
   zustand.gurte.push(g);
+  freieZurrpunkte([g], (a) => { g.abstand = a; });
   auswahl = { art: 'gurt', id: g.id };
   aendere();
 }
@@ -1879,9 +1906,28 @@ document.querySelector('.ansicht').addEventListener('click', (ev) => {
 $('fahrzeug').innerHTML = FAHRZEUGE.map((f) => `<option value="${f.id}">${esc(f.name)}</option>`).join('');
 $('fahrzeug').value = fahrzeug().id;
 const zeigeNutzlast = () => { $('nutzlast').value = zustand.nutzlast > 0 ? zustand.nutzlast : fahrzeug().nutzlast; };
-$('fahrzeug').addEventListener('change', () => { zustand.fahrzeugId = $('fahrzeug').value; zustand.nutzlast = 0; zeigeNutzlast(); speichere(); baueFahrzeug(); aktualisiere(); });
+function zeigeZurrpunkt() {
+  const z = zurrpunkt();
+  $('zp-art').value = z.art;
+  if (document.activeElement !== $('zp-lc')) $('zp-lc').value = z.lc;
+  if (document.activeElement !== $('zp-wll')) $('zp-wll').value = z.wll ?? 9.5;
+  $('zp-lc-feld').hidden = z.art !== 'en12640';
+  $('zp-wll-feld').hidden = z.art !== 'winkel';
+  $('zp-info').textContent = z.art === 'winkel'
+    ? `LC = 2 × WLL = ${zahl(z.lc, 0)} daN. Belastungswinkel (Abweichung von senkrecht): bis 45° 70 %, bis 90° 50 %.`
+    : `LC je Zurrpunkt ${zahl(z.lc, 0)} daN (EN 12640: über 12 t 2000 daN, 7,5–12 t 1000 daN, 3,5–7,5 t 800 daN).`;
+}
+$('zp-art').addEventListener('change', () => {
+  const art = $('zp-art').value;
+  zustand.zurrpunkt = art === 'winkel' ? { art, wll: 9.5, lc: 19000 } : null;
+  zeigeZurrpunkt(); speichere(); aktualisiere();
+});
+$('zp-lc').addEventListener('input', () => { const v = +$('zp-lc').value; if (v > 0) { zustand.zurrpunkt = { art: 'en12640', lc: v }; $('zp-info').textContent = `LC je Zurrpunkt ${zahl(v, 0)} daN.`; speichere(); aktualisiereBald(); } });
+$('zp-wll').addEventListener('input', () => { const v = +$('zp-wll').value.replace(',', '.'); if (v > 0) { zustand.zurrpunkt = { art: 'winkel', wll: v, lc: Math.round(v * 2000) }; zeigeZurrpunkt(); speichere(); aktualisiereBald(); } });
+$('fahrzeug').addEventListener('change', () => { zustand.fahrzeugId = $('fahrzeug').value; zustand.nutzlast = 0; zustand.zurrpunkt = null; zeigeZurrpunkt(); zeigeNutzlast(); speichere(); baueFahrzeug(); aktualisiere(); });
 $('nutzlast').addEventListener('input', () => { const v = +$('nutzlast').value; if (v > 0) { zustand.nutzlast = v; speichere(); aktualisiereBald(); } });
 zeigeNutzlast();
+zeigeZurrpunkt();
 $('ladegut-neu').addEventListener('click', oeffneKatalog);
 $('fahrt-knopf').addEventListener('click', oeffneFahrtWahl);
 // Augen-Knopf oben: Menü mit den Anzeige-Schaltern
@@ -1974,7 +2020,7 @@ $('leeren').addEventListener('click', () => {
 });
 
 groesse();
-ergebnis = pruefe({ ...zustand, flaeche: fahrzeug() });
+ergebnis = pruefe({ ...zustand, flaeche: flaeche() });
 baueFahrzeug();
 setzeAnsicht(ansicht, true);
 

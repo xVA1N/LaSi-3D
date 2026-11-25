@@ -248,3 +248,7 @@ li.pflicht { color: #b26a00; }
 .bild .in { fill: #3a2410; font: italic 700 14px serif; }
 .icons button.an { background: #2f8a4a; color: #fff; }
 .katalog button:disabled { opacity: .55; cursor: not-allowed; } .katalog button:disabled small .schlecht { opacity: 1; font-weight: 600; }
+.panel label[hidden] { display: none; }
+.bild .f100 { fill: #7cc96a99; } .bild .f70 { fill: #f2cf5b99; } .bild .f50 { fill: #f0964a99; }
+.bild .oese { fill: none; stroke: currentColor; stroke-width: 3; }
+.bild line.zug { stroke: currentColor; stroke-width: 3; } .dunkel-spitze { fill: currentColor; }

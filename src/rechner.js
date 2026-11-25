@@ -46,3 +46,13 @@ export function kippen({ schwerpunktHoehe, breite, laenge }) {
   }
   return e;
 }
+
+/**
+ * Belastungswinkel an Schäkel/Anschlagpunkt: Grundwert WLL (als Zurrmittel 2 × WLL),
+ * abgemindert nach Abweichung θ von der Achse: bis 5° 100 %, bis 45° 70 %, bis 90° 50 %.
+ */
+export function belastungswinkel({ wll, zurr = true, theta }) {
+  const grund = zurr ? 2 * wll : wll;
+  const faktor = theta <= 5 ? 1 : theta <= 45 ? 0.7 : 0.5;
+  return { grund, faktor, zulaessig: grund * faktor };
+}

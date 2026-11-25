@@ -138,6 +138,20 @@ export function gurtLage(gurt, einheiten, flaecheBreite) {
 export const F_MU_DIREKT = 0.75;
 // Zurrpunkte für Direktzurren sitzen außen am Rahmen, so weit neben der Ladefläche
 export const ZURRPUNKT_AUSSEN = 0.065;
+// Zurrpunkte am Außenrahmen: zulässige Zugkraft LC nach EN 12640 (Fahrzeug über 12 t: 2000 daN).
+// Höchstens 3 belegte Zurrpunkte je Meter Rahmen und Seite.
+export const ZURRPUNKT_STANDARD = { art: 'en12640', lc: 2000 };
+export const ZURRPUNKTE_JE_METER = 3;
+/**
+ * Abminderung durch den Belastungswinkel θ (Abweichung der Zugrichtung von der Achse des Zurrpunkts, die senkrecht
+ * nach oben zeigt): 0° → 100 %, bis 45° → 70 %, bis 90° → 50 %. Gilt für Anschlagpunkte/Schäkel; Zurrpunkte nach
+ * EN 12640 sind für alle Zugrichtungen geprüft (Faktor 1).
+ */
+export function winkelFaktor(zp, alphaGrad) {
+  if (zp.art !== 'winkel') return 1;
+  const theta = 90 - alphaGrad;
+  return theta <= 5 ? 1 : theta <= 45 ? 0.7 : 0.5;
+}
 const istKopf = (g) => g.art === 'kopf';
 
 /**
@@ -287,6 +301,14 @@ export function pruefe({ objekte, gurte, flaeche }) {
     return { ...info, mangel: text };
   };
   const durch = (punkte, ausgenommen) => gurtKollision(punkte, objekte, lage, ausgenommen);
+  // Zurrpunkte: jede Belegung mit Last (daN) und zulässiger Last nach Winkel
+  const zp = flaeche.zurrpunkt ?? ZURRPUNKT_STANDARD;
+  const anker = [];
+  const punktLast = (g, x, z, last, alpha) => {
+    const faktor = winkelFaktor(zp, alpha), zul = zp.lc * faktor;
+    anker.push({ gurt: g.id, x, seite: z < 0 ? 'l' : 'r', last, zul });
+    return { last, zul, faktor, theta: 90 - alpha };
+  };
   const mitgliedIds = (e, ...mehr) => new Set([...e.mitglieder.map((m) => m.id), ...mehr.filter(Boolean)]);
   const gurtInfo = gurte.map((g) => {
     if (istKopf(g)) {
@@ -298,8 +320,12 @@ export function pruefe({ objekte, gurte, flaeche }) {
       const weg = [{ x: k.ankerX, y: 0, z: -Bz }, { x: k.x, y: k.y, z: k.z0 }, { x: k.x, y: k.y, z: k.z1 }, { x: k.ankerX, y: 0, z: Bz }];
       const hindernis = durch(weg, mitgliedIds(e, k.lastverteiler?.id));
       if (hindernis) return mangel(g, info, `Kopfschlinge läuft durch ${hindernis.name}.`);
+      const zulKopf = zp.lc * winkelFaktor(zp, k.winkel), lcKopf = Math.min(g.lc, zulKopf);
+      info.punkt = punktLast(g, k.ankerX, -1, lcKopf, k.winkel);
+      punktLast(g, k.ankerX, 1, lcKopf, k.winkel);
+      info.lcWirksam = lcKopf;
       const b = beitrag.get(e.id);
-      const kraft = g.lc * 10 * k.faktor(e.mu);
+      const kraft = lcKopf * 10 * k.faktor(e.mu);
       b.kopf[k.richtung] += kraft;
       b.direkt[k.richtung] += kraft;
       b.quellen[k.richtung].add('kopf');
@@ -314,10 +340,13 @@ export function pruefe({ objekte, gurte, flaeche }) {
       const hindernis = durch([k.oben, k.a], mitgliedIds(e)) || durch([k.unten, k.a], mitgliedIds(e));
       if (hindernis) return mangel(g, info, `Schlinge läuft durch ${hindernis.name}.`);
       if (g.x <= e.f.x0 || g.x >= e.f.x1) return mangel(g, info, 'Schlinge liegt neben der Ladung.');
+      const lcBucht = Math.min(g.lc, (zp.lc * winkelFaktor(zp, k.winkel)) / 2);
+      info.punkt = punktLast(g, k.a.x, k.a.z, 2 * lcBucht, k.winkel);
+      info.lcWirksam = lcBucht;
       const b = beitrag.get(e.id);
       for (const d of [k.dOben, k.dUnten]) {
-        const w = direktWirkung(d, g.lc * 10, e.mu);
-        const mo = direktKippmomente(d === k.dOben ? k.oben : k.unten, d, g.lc * 10, e.basis);
+        const w = direktWirkung(d, lcBucht * 10, e.mu);
+        const mo = direktKippmomente(d === k.dOben ? k.oben : k.unten, d, lcBucht * 10, e.basis);
         for (const r of Object.keys(w)) { b.direkt[r] += w[r]; b.moment[r] += mo[r]; }
       }
       b.quellen.seitlich.add('bucht');
@@ -332,9 +361,12 @@ export function pruefe({ objekte, gurte, flaeche }) {
       const hindernis = durch([k.p, k.a], mitgliedIds(e));
       if (hindernis) return mangel(g, info, `Gurt läuft durch ${hindernis.name}.`);
       if (Math.hypot(k.d.x, k.d.z) < 0.25) return mangel(g, info, 'Gurt fast senkrecht, hält so kaum. Ladung vom Rand abrücken oder Zurrpunkt weiter weg wählen.');
+      const lcDirekt = Math.min(g.lc, zp.lc * winkelFaktor(zp, k.winkel));
+      info.punkt = punktLast(g, k.a.x, k.a.z, lcDirekt, k.winkel);
+      info.lcWirksam = lcDirekt;
       const b = beitrag.get(e.id);
-      const w = direktWirkung(k.d, g.lc * 10, e.mu);
-      const mo = direktKippmomente(k.p, k.d, g.lc * 10, e.basis);
+      const w = direktWirkung(k.d, lcDirekt * 10, e.mu);
+      const mo = direktKippmomente(k.p, k.d, lcDirekt * 10, e.basis);
       for (const r of Object.keys(w)) { b.direkt[r] += w[r]; b.moment[r] += mo[r]; }
       for (const r of ['vorwaerts', 'rueckwaerts']) if (w[r] > 0) b.quellen[r].add(g.variante);
       if (w.rechts > 0 || w.links > 0) b.quellen.seitlich.add(g.variante);
@@ -348,6 +380,13 @@ export function pruefe({ objekte, gurte, flaeche }) {
     const hindernis = durch(weg, new Set(gl.getroffen.flatMap((e) => e.mitglieder.map((m) => m.id))));
     if (hindernis) return mangel(g, info, `Gurt läuft durch ${hindernis.name}.`);
     if (g.stf > g.lc / 2) hinweise.push({ art: 'gurt', id: g.id, text: `S_TF ${g.stf} daN ist mehr als 0,5 · LC; gerechnet wird mit ${g.lc / 2} daN.` });
+    // Die Vorspannkraft wirkt an beiden Zurrpunkten; sie darf die zulässige Zugkraft des Zurrpunkts nicht übersteigen
+    const sinL = (a, b) => { const dz = Math.abs(b[0] - a[0]), dy = Math.abs(b[1] - a[1]); return dz <= 1e-6 ? 1 : dy / Math.hypot(dz, dy); };
+    const grad = (x) => (Math.asin(Math.min(1, x)) * 180) / Math.PI;
+    info.punkt = punktLast(g, g.x, -1, rechenkraftDaN(g), grad(sinL(gl.weg[0], gl.weg[1])));
+    const rechts = punktLast(g, g.x, 1, rechenkraftDaN(g), grad(sinL(gl.weg.at(-1), gl.weg.at(-2))));
+    if (rechts.zul < info.punkt.zul) info.punkt = rechts;
+    if (rechenkraftDaN(g) > info.punkt.zul + 1e-9) return mangel(g, info, `Vorspannkraft ${rechenkraftDaN(g)} daN ist mehr, als der Zurrpunkt hält (${Math.round(info.punkt.zul)} daN).`);
     const ft = rechenkraftDaN(g) * 10; // N
     const k = g.zweiRatschen ? K_FAKTOR.zweiSpannelemente : K_FAKTOR.einSpannelement;
     for (const e of gl.getroffen) {
@@ -359,6 +398,35 @@ export function pruefe({ objekte, gurte, flaeche }) {
     }
     return info;
   });
+
+  // Zurrpunkte: mehrere Gurte am selben Punkt teilen sich die Zugkraft; höchstens 3 Belegungen je Meter und Seite
+  const ab = (x) => (Math.round((L / 2 - x) * 100) / 100).toLocaleString('de-DE');
+  const seiteName = { l: 'links', r: 'rechts' };
+  const punkte = new Map();
+  for (const a of anker) {
+    const x = naechsterZurrpunkt(L, a.x), key = `${a.seite}${x}`;
+    if (!punkte.has(key)) punkte.set(key, { x, seite: a.seite, auslastung: 0, gurte: new Set() });
+    const p = punkte.get(key);
+    p.auslastung += a.last / a.zul;
+    p.gurte.add(a.gurt);
+  }
+  const zurrpunktInfo = [...punkte.values()];
+  for (const p of zurrpunktInfo) {
+    if (p.auslastung > 1 + 1e-9) hinweise.push({ art: 'zurrpunkt', ids: [...p.gurte], text: `Zurrpunkt ${seiteName[p.seite]} bei ${ab(p.x)} m ab Stirnwand überlastet (${Math.round(p.auslastung * 100)} %): mehrere Gurte an einem Punkt.` });
+  }
+  for (const seite of ['l', 'r']) {
+    const xs = anker.filter((a) => a.seite === seite).map((a) => ({ x: naechsterZurrpunkt(L, a.x), gurt: a.gurt })).sort((p, q) => q.x - p.x);
+    for (let i = 0; i < xs.length; i++) {
+      const im = xs.filter((a) => a.x <= xs[i].x + 1e-6 && a.x >= xs[i].x - 1 - 1e-6);
+      if (im.length > ZURRPUNKTE_JE_METER) {
+        hinweise.push({ art: 'zurrpunkt', ids: [...new Set(im.map((a) => a.gurt))], text: `${im.length} Gurte auf einem Meter Rahmen (${seiteName[seite]}, ${ab(xs[i].x)}–${ab(xs[i].x - 1)} m ab Stirnwand); höchstens ${ZURRPUNKTE_JE_METER} erlaubt.` });
+        break;
+      }
+    }
+  }
+
+  // betroffene Gurte als mangelhaft markieren (blinken im Bild)
+  for (const h of hinweise) if (h.art === 'zurrpunkt') for (const id of h.ids) { const i = gurtInfo.find((x) => x.id === id); if (i && !i.mangel) i.mangel = h.text; }
 
   // Formschluss nach vorne: an der Stirnwand oder an etwas, das selbst formschlüssig steht
   // (andere Einheit oder hochkant stehende Palette als Füllmittel)
@@ -435,7 +503,7 @@ export function pruefe({ objekte, gurte, flaeche }) {
     }
   }
 
-  return { ergebnisse, gurte: gurtInfo, lage, stirnwandLast, hinweise, ok: ergebnisse.every((e) => e.ok) && !hinweise.some((h) => h.art !== 'gurt') };
+  return { ergebnisse, gurte: gurtInfo, zurrpunkte: zurrpunktInfo, lage, stirnwandLast, hinweise, ok: ergebnisse.every((e) => e.ok) && !hinweise.some((h) => h.art !== 'gurt') };
 }
 
 /**
