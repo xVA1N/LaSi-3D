@@ -379,8 +379,9 @@ function baueGurt(g, info, gewaehlt) {
   const { breite: B, hoehe: H } = fahrzeug();
   const e = 0.012;
   const liegt = info.getroffen.length > 0;
+  // straff über die Kanten (obere konvexe Hülle), knapp außerhalb der Ladung gezeichnet
   const punkte = liegt
-    ? [[-B / 2, 0], [info.z0 - e, info.hoehe + e], [info.z1 + e, info.hoehe + e], [B / 2, 0]]
+    ? info.weg.map(([z, y], i, w) => (y > 0 ? [z + (i <= w.length / 2 ? -e : e) * (Math.abs(z) < B / 2 ? 1 : 0), y + e] : [z, y]))
     : [[-B / 2, 0.02], [B / 2, 0.02]];
   const v = punkte.map(([z, y]) => new THREE.Vector3(g.x, H + y, z));
   const material = gewaehlt ? mat(0xffc400, { emissive: 0x664400 }) : info.mangel ? mangelMat : mat(0xe8901a, { roughness: 0.5 });

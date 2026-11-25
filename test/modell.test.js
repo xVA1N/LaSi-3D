@@ -282,3 +282,18 @@ test('Buchtlashing: ein Paar hält das Rohr seitlich, eine Schlinge allein nicht
   const daneben = pruefe({ objekte: [rohr('r', 0)], flaeche, gurte: [bucht('a', 'r', 'l', 5)] });
   assert.match(daneben.gurte[0].mangel, /neben der Ladung/);
 });
+
+test('Niederzurrgurt liegt straff an den Kanten: niedrigere Ladung daneben wird nicht berührt', () => {
+  const hoch = kiste('hoch', 0, 0.3, { b: 1.0, h: 2.0 });
+  const niedrig = kiste('niedrig', 0, -0.6, { b: 0.7, h: 0.4 }); // liegt unter dem schrägen Schenkel
+  const r = pruefe({ objekte: [hoch, niedrig], flaeche, gurte: [gurt('g', 0)] });
+  const info = r.gurte[0];
+  assert.deepEqual(info.getroffen, ['hoch']);
+  // linker Schenkel geht vom Zurrpunkt (−1,24 | 0) direkt zur Oberkante der hohen Kiste (−0,2 | 2,0)
+  assert.deepEqual(info.weg[0], [-1.24, 0]);
+  assert.deepEqual(info.weg[1], [-0.2, 2.0]);
+  assert.equal(r.ergebnisse.find((e) => e.id === 'niedrig').gurte.length, 0);
+  // gleich hohe Einheiten nebeneinander werden beide berührt
+  const gleich = pruefe({ objekte: [kiste('a', 0, -0.62, { b: 1.2 }), kiste('b', 0, 0.62, { b: 1.2 })], flaeche, gurte: [gurt('g', 0)] });
+  assert.equal(gleich.gurte[0].getroffen.length, 2);
+});
