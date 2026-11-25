@@ -380,3 +380,31 @@ test('Sperrbalken hält rückwärts bis LC, Staupolster gibt Formschluss weiter'
   // frei stehendes Staupolster ist lose
   assert.ok(p({ objekte: [v('staupolster', { id: 'p', x: 0 })], gurte: [], flaeche }).hinweise.some((h) => h.art === 'lose'));
 });
+
+test('Blockverband: Kiste mit Staupolster an gesicherter Kiste davor ist im Block gesichert', async () => {
+  const { pruefe: p } = await import('../src/modell.js');
+  const { HILFSMITTEL } = await import('../src/daten.js');
+  const kiste = (id, x) => ({ id, typ: 'ladung', name: 'Kiste', material: 'holz', masse: 500, l: 1.2, b: 1.0, h: 1, x, z: 0, drehung: 0 });
+  const polster = { ...HILFSMITTEL.find((h) => h.art === 'staupolster'), id: 'p', x: 0.7, z: 0, drehung: 0 };
+  const gurt = (id, x) => ({ id, x, stf: 500, lc: 2500, zweiRatschen: false });
+  // vorne (x=1.4) gut genug gezurrt für beide, hinten (x=0) ungezurrt, Staupolster 0,2 m dazwischen
+  const objekte = [kiste('vorne', 1.4), polster, kiste('hinten', 0)];
+  const viele = [gurt('a', 1.0), gurt('b', 1.2), gurt('c', 1.4), gurt('d', 1.6), gurt('e', 1.8)];
+  const r = p({ objekte, gurte: viele, flaeche });
+  const hinten = r.ergebnisse.find((e) => e.id === 'hinten');
+  assert.equal(hinten.richtungen.vorwaerts.ok, true);
+  assert.ok(hinten.richtungen.vorwaerts.block);
+  // ohne Gurte am Block: bleibt ungesichert
+  const ohne = p({ objekte, gurte: [], flaeche });
+  assert.equal(ohne.ergebnisse.find((e) => e.id === 'hinten').richtungen.vorwaerts.ok, false);
+});
+
+test('Blockverband wirkt nur in Schubrichtung: die vordere Kiste wird von der hinteren nicht gehalten', async () => {
+  const { pruefe: p } = await import('../src/modell.js');
+  const kiste = (id, x) => ({ id, typ: 'ladung', name: 'Kiste', material: 'holz', masse: 500, l: 1.2, b: 1.0, h: 1, x, z: 0, drehung: 0 });
+  const gurt = (id, x) => ({ id, x, stf: 500, lc: 2500, zweiRatschen: false });
+  // nur die hintere Kiste ist gezurrt
+  const r = p({ objekte: [kiste('vorne', 1.2), kiste('hinten', 0)], gurte: [gurt('a', -0.4), gurt('b', -0.2), gurt('c', 0), gurt('d', 0.2), gurt('e', 0.4)], flaeche });
+  assert.equal(r.ergebnisse.find((e) => e.id === 'vorne').richtungen.vorwaerts.ok, false);
+  assert.equal(r.ergebnisse.find((e) => e.id === 'vorne').richtungen.rueckwaerts.ok, true); // nach hinten schiebt sie die gezurrte
+});

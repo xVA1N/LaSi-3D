@@ -544,6 +544,33 @@ export function pruefe({ objekte, gurte, flaeche }) {
     return { id: e.id, einheit: e, richtungen, kippen, gurte: b.gurte, ok };
   });
 
+  // Blockverband: Steht eine Einheit in Rutschrichtung direkt an anderen (auch über hochkant EPAL oder Staupolster),
+  // schiebt sie diese an. Hält sie allein nicht, zählt die Sicherung aller Einheiten, die sie anschiebt,
+  // die dann aber auch ihre eigene Last tragen müssen.
+  const ergebnisVon = new Map(ergebnisse.map((e) => [e.id, e]));
+  const vor = (a, b, r) => quer(a.f, b.f) && luecke(r === 'vorwaerts' ? b.f.x0 - a.f.x1 : a.f.x0 - b.f.x1);
+  for (const r of ['vorwaerts', 'rueckwaerts']) {
+    for (const e of ergebnisse) {
+      const d = e.richtungen[r];
+      if (d.ok) continue;
+      const start = glieder.find((g) => g.id === e.id);
+      const gesehen = new Set([e.id]), stapel = [start];
+      while (stapel.length) {
+        const a = stapel.pop();
+        for (const n of glieder) if (!gesehen.has(n.id) && vor(a, n, r)) { gesehen.add(n.id); stapel.push(n); }
+      }
+      const block = [...gesehen].map((id) => ergebnisVon.get(id)).filter(Boolean);
+      if (block.length < 2) continue;
+      // erreicht der Block einen Anschlag (Formschluss), hält er
+      if (block.some((x) => x.richtungen[r].formschluss)) { Object.assign(d, { block: { ids: block.map((x) => x.id), auslastung: 0, hat: 1, brauch: 0 }, ok: true }); continue; }
+      const brauch = block.reduce((s2, x) => s2 + x.richtungen[r].brauch, 0);
+      const hat = block.reduce((s2, x) => s2 + (x.richtungen[r].hat || 0), 0);
+      const auslastung = brauch === 0 ? 0 : hat > 0 ? brauch / hat : Infinity;
+      Object.assign(d, { block: { ids: block.map((x) => x.id), auslastung, hat, brauch }, ok: auslastung <= 1 + 1e-9 });
+    }
+  }
+  for (const e of ergebnisse) e.ok = RICHTUNGEN.every((r) => e.richtungen[r].ok) && e.kippen.seitlich.ok && e.kippen.laengs.ok;
+
   // Hochkant-Paletten sind nur gehalten als Füllmittel (Formschluss) oder als Lastverteiler einer Kopfschlinge
   for (const v of verteiler) {
     const gehalten = vorne.has(v.id) || hinten.has(v.id) || gurtInfo.some((i) => !i.mangel && i.lastverteiler?.id === v.id);

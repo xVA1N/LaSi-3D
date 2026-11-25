@@ -1045,7 +1045,7 @@ function objektStatus(o) {
     return { ok: true, text: o.hochkant ? '✓ gehalten (Füllmittel oder Lastverteiler)' : 'trägt keine Ladung' };
   }
   const probleme = [];
-  for (const [r, d] of Object.entries(e.richtungen)) if (!d.ok) probleme.push(d.hat === 0 ? `${RNAME[r]} ${d.rollt ? 'rollt' : 'ungesichert'}` : `${RNAME[r]} ${zahl(d.auslastung * 100, 0)} %`);
+  for (const [r, d] of Object.entries(e.richtungen)) if (!d.ok) probleme.push(d.block ? (d.block.hat === 0 ? `${RNAME[r]} ungesichert (auch die Ladung ${r === 'vorwaerts' ? 'davor' : 'dahinter'})` : `${RNAME[r]} im Block ${zahl(d.block.auslastung * 100, 0)} %`) : d.hat === 0 ? `${RNAME[r]} ${d.rollt ? 'rollt' : 'ungesichert'}` : `${RNAME[r]} ${zahl(d.auslastung * 100, 0)} %`);
   if (!e.kippen.seitlich.ok) probleme.push('kippt quer');
   if (!e.kippen.laengs.ok) probleme.push('kippt längs');
   const ids = new Set(e.einheit.mitglieder.map((m) => m.id));
@@ -1192,7 +1192,9 @@ function zeigeErgebnis() {
   const karten = r.ergebnisse.map((e) => {
     const zeilen = Object.entries(e.richtungen).map(([k, d]) => {
       let text;
+      const nummern = (ids) => ids.filter((i) => i !== e.id).map((i) => { const r = reihen.find((x) => x.ids.includes(i)); return r ? `LR${r.nr}` : null; }).filter(Boolean);
       if (d.formschluss) text = 'Formschluss';
+      else if (d.block) text = d.block.hat === 0 ? `ungesichert, auch im Block (${[...new Set(nummern(d.block.ids))].join(', ') || 'Nachbar'} nicht gesichert)` : `im Block mit ${[...new Set(nummern(d.block.ids))].join(', ') || 'Nachbar'}: ${zahl(d.block.auslastung * 100, 0)} % ausgelastet`;
       else if (d.brauch === 0) text = 'hält durch Reibung';
       else if (d.hat === 0) text = d.rollt ? 'rollt, ungesichert' : 'ungesichert';
       else text = `${{ kopf: 'Kopfschlinge ', direkt: 'Direktzurren ', bucht: 'Buchtlashing ' }[d.methode] ?? ''}${zahl(d.auslastung * 100, 0)} % ausgelastet`;
