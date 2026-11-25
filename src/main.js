@@ -18,6 +18,8 @@ let reihen = [];
 let ansicht = 'oben';
 try { ansicht = localStorage.getItem('lasi3d-ansicht') === '3d' ? '3d' : 'oben'; } catch { /* ohne Speicher: Draufsicht */ }
 let zaehler = 0;
+let zeigeSchwerpunkt = true;
+try { zeigeSchwerpunkt = localStorage.getItem('lasi3d-schwerpunkt') !== 'aus'; } catch { /* egal */ }
 let platzMuster = null; // null | 'laengs' | 'quer': EPAL-Stellplätze eingeblendet
 try { platzMuster = ['laengs', 'quer'].includes(localStorage.getItem('lasi3d-plaetze')) ? localStorage.getItem('lasi3d-plaetze') : null; } catch { /* egal */ }
 const neueId = (p) => `${p}${Date.now().toString(36)}${++zaehler}`;
@@ -587,7 +589,7 @@ function baueReihen() {
 function baueAchslast() {
   const { breite: B, hoehe: H } = fahrzeug();
   const sp = achs.schwerpunkt;
-  if (sp.masse > 0) {
+  if (sp.masse > 0 && zeigeSchwerpunkt) {
     ladungGruppe.add(kasten(0.02, 0.6, 0.02, mat(0x1d2420), sp.x, H + 0.3, sp.z));
     const scheibe = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.012, 32), mat(0xffffff));
     scheibe.position.set(sp.x, H + 0.006, sp.z);
@@ -691,7 +693,7 @@ function baueMarken() {
     marke(uebermass.zuBreit ? 'warnung' : 'mass', `seitlich ${laenge(seitlich)} · Breite ${zahl(uebermass.breite, 2)} m`,
       new THREE.Vector3(teil.x, H + ergebnis.lage.get(teil.id).y + teil.h, rechts ? f.z1 : f.z0));
   }
-  if (achs.schwerpunkt.masse > 0) marke('mass', '⊕ Schwerpunkt', new THREE.Vector3(achs.schwerpunkt.x, H + 0.6, achs.schwerpunkt.z));
+  if (achs.schwerpunkt.masse > 0 && zeigeSchwerpunkt) marke('mass', '⊕ Schwerpunkt', new THREE.Vector3(achs.schwerpunkt.x, H + 0.6, achs.schwerpunkt.z));
   for (const a of achs.achsen) if (!a.ok) marke('warnung', `${a.name}: ${zahl(a.last / 1000, 1)} t`, new THREE.Vector3(a.x, 1.3, B / 2));
   for (const a of einzelachsen()) marke(`achsnr ${a.last > a.max + 1e-6 ? 'zu' : ''}`, a.nr, new THREE.Vector3(a.x, 0.5, B / 2 + 0.05));
   if (achs.zapfen) marke('achsnr zapfen', '⊙', new THREE.Vector3(achs.zapfen.x, H - 0.3, B / 2 + 0.05));
@@ -1007,12 +1009,23 @@ function zeigeAchsbox() {
     html += achsen.filter((a) => a.gruppe === 'auflieger').map((a) => zeile(a.nr, a.last, a.max)).join('');
   } else html += achsen.map((a) => zeile(a.nr, a.last, a.max)).join('');
   const ok = achs.achsen.every((x) => x.ok);
-  box.innerHTML = `<div class="kopf"><span>Achslasten ${ok ? '<span class="gut">✓</span>' : '<span class="schlecht">✗</span>'}</span><span>${box.classList.contains('zu-klein') ? '▸' : '▾'}</span></div><div class="inhalt">${html}</div>`;
+  box.innerHTML = `<div class="kopf"><span>Achslasten ${ok ? '<span class="gut">✓</span>' : '<span class="schlecht">✗</span>'}</span>
+    <span class="knoepfchen"><button type="button" data-sp class="${zeigeSchwerpunkt ? 'an' : ''}" title="Schwerpunkt ${zeigeSchwerpunkt ? 'ausblenden' : 'einblenden'}" aria-pressed="${zeigeSchwerpunkt}">⊕</button><button type="button" data-lvp title="Lastverteilungsplan" aria-label="Lastverteilungsplan">ⓘ</button><span>${box.classList.contains('zu-klein') ? '▸' : '▾'}</span></span></div><div class="inhalt">${html}</div>`;
 }
 // Antippen klappt das Kästchen ein und aus; bleibt im Browser gespeichert
 try { if (localStorage.getItem('lasi3d-achsbox') === 'zu') document.getElementById('achsbox').classList.add('zu-klein'); } catch { /* egal */ }
-document.getElementById('achsbox').addEventListener('click', () => {
+document.getElementById('achsbox').addEventListener('click', (ev) => {
   const box = document.getElementById('achsbox');
+  if (ev.target.closest('[data-sp]')) {
+    zeigeSchwerpunkt = !zeigeSchwerpunkt;
+    try { localStorage.setItem('lasi3d-schwerpunkt', zeigeSchwerpunkt ? 'an' : 'aus'); } catch { /* egal */ }
+    aktualisiere();
+    return;
+  }
+  if (ev.target.closest('[data-lvp]')) {
+    oeffneBlatt(`<h3 id="blatt-titel">Lastverteilungsplan</h3>${achslastBlock()}${fuss(false)}`);
+    return;
+  }
   box.classList.toggle('zu-klein');
   try { localStorage.setItem('lasi3d-achsbox', box.classList.contains('zu-klein') ? 'zu' : 'auf'); } catch { /* egal */ }
   zeigeAchsbox();

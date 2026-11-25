@@ -164,3 +164,8 @@ li.pflicht { color: #b26a00; }
 .platzleiste .platzzeile .werte { flex: 1; font-size: .78rem; min-width: 0; }
 .platzleiste .chips button { padding: 5px 10px; }
 .platzleiste button { padding: 6px 10px; font-size: .85rem; }
+
+.achsbox .kopf { align-items: center; }
+.achsbox .knoepfchen { display: inline-flex; align-items: center; gap: 4px; }
+.achsbox .knoepfchen button { padding: 0; width: 22px; height: 22px; border-radius: 50%; background: var(--feld); color: var(--text); font-size: 13px; line-height: 1; }
+.achsbox .knoepfchen button.an { background: var(--knopf); color: var(--knopf-text); }
