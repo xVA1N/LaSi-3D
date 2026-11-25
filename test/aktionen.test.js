@@ -118,3 +118,9 @@ test('Mitte: Gruppe quer zentrieren, Abstand zu beiden Bordkanten', async () => 
   s = abstandSeiten(o, stapeln(o), o[1], flaeche);
   assert.ok(Math.abs(s.links - 0.84) < 1e-9 && Math.abs(s.rechts - 0.84) < 1e-9);
 });
+
+test('RHM: Teile auf der Ladefläche ohne RHM, von der Stirnwand nach hinten', async () => {
+  const { ohneRhm } = await import('../src/aktionen.js');
+  const o = [palette('a', 2), palette('b', 5), matte('m', 5), palette('c', 0), kiste('k', 0)];
+  assert.deepEqual(ohneRhm(o, stapeln(o)).map((x) => x.id), ['a', 'c']);
+});

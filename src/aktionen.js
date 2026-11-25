@@ -128,6 +128,13 @@ export function setzeUnterlage(objekte, lage, o, neueArt, neueId) {
   return true;
 }
 
+/** Teile, die direkt auf der Ladefläche stehen und noch kein RHM haben – von der Stirnwand nach hinten */
+export function ohneRhm(objekte, lage) {
+  return objekte
+    .filter((o) => o.typ !== 'rhm' && !o.hochkant && !lage.get(o.id)?.traeger && (lage.get(o.id)?.y ?? 0) < 1e-9)
+    .sort((a, b) => b.x - a.x || a.z - b.z);
+}
+
 /** Freie Stelle für einen weiteren Gurt über einer Gruppe */
 export function freierGurtX(gurte, u) {
   const mitte = (u.x0 + u.x1) / 2;

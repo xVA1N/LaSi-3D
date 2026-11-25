@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { pruefe, fussabdruck, fugenReibung, rechenkraftDaN, kopfLage, ladereihen, naechsterZurrpunkt, STIRNWAND_KRAFT_N, MU_RHM, ZURRPUNKT_AUSSEN } from './modell.js';
 import { FAHRZEUGE, LADEGUT, HILFSMITTEL, GURTTYPEN, MATERIALIEN, beispiel } from './daten.js';
-import { bewegGruppe, vereinigung, anWand, abstandSeiten, zentriere, verschiebe, abstandVorne, unterlage, setzeUnterlage, freierGurtX, stellplaetze, platzFrei, stapelPlatz, UEBERSTAND_MAX } from './aktionen.js';
+import { bewegGruppe, vereinigung, anWand, abstandSeiten, zentriere, ohneRhm, verschiebe, abstandVorne, unterlage, setzeUnterlage, freierGurtX, stellplaetze, platzFrei, stapelPlatz, UEBERSTAND_MAX } from './aktionen.js';
 import { pruefeUebermass, GRENZEN } from './uebermass.js';
 import { pruefeAchslasten, lastverteilungsplan } from './achslast.js';
 import { MANOEVER, startzustand, schritt, auswertung } from './fahrt.js';
@@ -1654,7 +1654,7 @@ function oeffneKatalog() {
 // RHM blockiert nur weiteres RHM; Ladung und EPAL dürfen draufgestellt werden
 function freieStelle(lx, lz, istRhm = false) {
   const { laenge: L, breite: B } = fahrzeug();
-  const andere = zustand.objekte.filter((o) => istRhm || o.typ !== 'rhm').map(fussabdruck);
+  const andere = zustand.objekte.filter((o) => (istRhm === 'nurRhm' ? o.typ === 'rhm' : istRhm || o.typ !== 'rhm')).map(fussabdruck);
   for (let x = L / 2; x - lx >= -L / 2 - 1e-6; x -= 0.05) {
     for (const seite of [-1, 1, 0]) {
       const z = seite * (B / 2 - lz / 2);
@@ -1668,7 +1668,7 @@ function neuesObjekt(vorlage) {
   const o = { typ: 'ladung', ...vorlage, id: neueId('o'), x: 0, z: 0, drehung: 0, mu: 0 };
   const sel = gewaehltesObjekt();
   if (o.typ === 'ladung' && sel && sel.typ !== 'ladung') { o.x = sel.x; o.z = sel.z; o.drehung = sel.drehung; }
-  else { const p = freieStelle(o.l, o.b, o.typ === 'rhm') ?? { x: 0, z: 0 }; o.x = p.x; o.z = p.z; }
+  else { const p = freieStelle(o.l, o.b, o.typ === 'rhm') ?? (o.typ === 'rhm' ? freieStelle(o.l, o.b, 'nurRhm') : null) ?? { x: 0, z: 0 }; o.x = p.x; o.z = p.z; }
   zustand.objekte.push(o);
   auswahl = { art: 'objekt', id: o.id };
   aendere();
@@ -1906,11 +1906,20 @@ $('rhm-neu').addEventListener('click', () => {
     const u = unterlage(zustand.objekte, ergebnis.lage, sel);
     const ziel = u.art === 'palette' && !u.geteilt ? u.kette[0] : sel;
     const uz = unterlage(zustand.objekte, ergebnis.lage, ziel);
-    if (!uz.geteilt && uz.art !== 'ladung') {
-      if (!uz.art.includes('matte')) setzeUnterlage(zustand.objekte, ergebnis.lage, ziel, uz.art === 'palette' ? 'palette-matte' : 'matte', neueId);
+    // hat es schon RHM, geht es beim nächsten Teil ohne RHM weiter
+    if (!uz.geteilt && uz.art !== 'ladung' && !uz.art.includes('matte')) {
+      setzeUnterlage(zustand.objekte, ergebnis.lage, ziel, uz.art === 'palette' ? 'palette-matte' : 'matte', neueId);
       aendere();
       return;
     }
+  }
+  // sonst unter das erste Teil auf der Ladefläche, das noch kein RHM hat
+  const ziel = ohneRhm(zustand.objekte, ergebnis.lage)[0];
+  if (ziel) {
+    setzeUnterlage(zustand.objekte, ergebnis.lage, ziel, 'matte', neueId);
+    aendere();
+    zeigeImBild(ziel.x);
+    return;
   }
   neuesObjekt(HILFSMITTEL.find((v) => v.art === 'rhm'));
 });
