@@ -337,3 +337,13 @@ test('Höchstens 3 Gurte je Meter Rahmen und Seite', async () => {
   assert.ok(vier.hinweise.some((h) => h.art === 'zurrpunkt'));
   assert.equal(vier.ok, false);
 });
+
+test('Zurrschiene: Gurte an beliebigen Stellen, höchstens 3 Positionen je Meter', async () => {
+  const { pruefe: p } = await import('../src/modell.js');
+  const k = { id: 'k', typ: 'ladung', name: 'Kiste', material: 'holz', masse: 2000, l: 2.4, b: 1.0, h: 1, x: 0, z: 0, drehung: 0 };
+  const gurt = (id, x) => ({ id, x, stf: 500, lc: 2500, zweiRatschen: false });
+  const f = { laenge: 13.6, breite: 2.48, zurrpunkt: { art: 'schiene', lc: 2000 } };
+  assert.equal(p({ objekte: [k], gurte: [gurt('a', 0), gurt('b', 0.3), gurt('c', 0.6)], flaeche: f }).hinweise.filter((h) => h.art === 'zurrpunkt').length, 0);
+  const vier = p({ objekte: [k], gurte: [gurt('a', 0), gurt('b', 0.3), gurt('c', 0.6), gurt('d', 0.9)], flaeche: f });
+  assert.match(vier.hinweise.find((h) => h.art === 'zurrpunkt').text, /EN 12640/);
+});

@@ -1911,18 +1911,19 @@ function zeigeZurrpunkt() {
   $('zp-art').value = z.art;
   if (document.activeElement !== $('zp-lc')) $('zp-lc').value = z.lc;
   if (document.activeElement !== $('zp-wll')) $('zp-wll').value = z.wll ?? 9.5;
-  $('zp-lc-feld').hidden = z.art !== 'en12640';
+  $('zp-lc-feld').hidden = z.art === 'winkel';
   $('zp-wll-feld').hidden = z.art !== 'winkel';
   $('zp-info').textContent = z.art === 'winkel'
     ? `LC = 2 × WLL = ${zahl(z.lc, 0)} daN. Belastungswinkel (Abweichung von senkrecht): bis 45° 70 %, bis 90° 50 %.`
-    : `LC je Zurrpunkt ${zahl(z.lc, 0)} daN (EN 12640: über 12 t 2000 daN, 7,5–12 t 1000 daN, 3,5–7,5 t 800 daN).`;
+    : z.art === 'schiene' ? `LC je Position ${zahl(z.lc, 0)} daN. Gurte können an jeder Stelle der Schiene sitzen, höchstens 3 je Meter.`
+    : `LC je Zurrpunkt ${zahl(z.lc, 0)} daN (EN 12640: über 12 t 2000 daN, 7,5–12 t 1000 daN, 3,5–7,5 t 800 daN). Raster 0,5 m.`;
 }
 $('zp-art').addEventListener('change', () => {
   const art = $('zp-art').value;
-  zustand.zurrpunkt = art === 'winkel' ? { art, wll: 9.5, lc: 19000 } : null;
+  zustand.zurrpunkt = art === 'winkel' ? { art, wll: 9.5, lc: 19000 } : art === 'schiene' ? { art, lc: fahrzeug().zurrpunktLC ?? 2000 } : null;
   zeigeZurrpunkt(); speichere(); aktualisiere();
 });
-$('zp-lc').addEventListener('input', () => { const v = +$('zp-lc').value; if (v > 0) { zustand.zurrpunkt = { art: 'en12640', lc: v }; $('zp-info').textContent = `LC je Zurrpunkt ${zahl(v, 0)} daN.`; speichere(); aktualisiereBald(); } });
+$('zp-lc').addEventListener('input', () => { const v = +$('zp-lc').value; if (v > 0) { zustand.zurrpunkt = { art: $('zp-art').value, lc: v }; zeigeZurrpunkt(); speichere(); aktualisiereBald(); } });
 $('zp-wll').addEventListener('input', () => { const v = +$('zp-wll').value.replace(',', '.'); if (v > 0) { zustand.zurrpunkt = { art: 'winkel', wll: v, lc: Math.round(v * 2000) }; zeigeZurrpunkt(); speichere(); aktualisiereBald(); } });
 $('fahrzeug').addEventListener('change', () => { zustand.fahrzeugId = $('fahrzeug').value; zustand.nutzlast = 0; zustand.zurrpunkt = null; zeigeZurrpunkt(); zeigeNutzlast(); speichere(); baueFahrzeug(); aktualisiere(); });
 $('nutzlast').addEventListener('input', () => { const v = +$('nutzlast').value; if (v > 0) { zustand.nutzlast = v; speichere(); aktualisiereBald(); } });
