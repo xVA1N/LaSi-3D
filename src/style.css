@@ -207,3 +207,15 @@ li.pflicht { color: #b26a00; }
 .rechner tr.fett td { font-weight: 700; }
 .rechner-form input { padding-right: 48px; -moz-appearance: textfield; }
 .rechner-form input::-webkit-outer-spin-button, .rechner-form input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.skizze { margin: 16px 0 0; padding: 12px; background: var(--karte); border: 1px solid var(--rand); border-radius: 14px; }
+.skizze svg { display: block; width: 100%; height: auto; color: var(--text); }
+.skizze .boden { stroke: var(--leise); stroke-width: 3; }
+.skizze .last { fill: #c8935a; stroke: #7a5a3d; stroke-width: 2; }
+.skizze .sp { fill: #fff; stroke: #111; stroke-width: 2; } .skizze .sp-k { stroke: #111; stroke-width: 2; }
+.skizze .mass, .skizze .fahrt { stroke: currentColor; stroke-width: 1.5; fill: none; }
+.skizze .hilfs { stroke: var(--leise); stroke-width: 1; stroke-dasharray: 3 3; }
+.skizze .kante { fill: var(--schlecht); }
+.skizze text { fill: currentColor; font-size: 12px; } .skizze .t text { font-weight: 700; font-size: 12px; }
+.skizze .m { font-weight: 700; font-style: italic; } .skizze .klein { font-size: 10px; } .skizze .k { font-size: 10px; fill: var(--leise); }
+.skizze figcaption { margin-top: 8px; font-size: .85rem; color: var(--leise); }
+.beispiel-knopf { margin-top: 10px; }
