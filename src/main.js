@@ -1042,7 +1042,7 @@ function einzelachsen() {
 }
 function zeigeAnzeige() {
   const schalter = [['reihen', 'Ladereihen', anzeige.reihen], ['achsen', 'Achslasten', anzeige.achsen], ['schwerpunkt', 'Schwerpunkt', zeigeSchwerpunkt]];
-  $('anzeige').innerHTML = schalter.map(([k, t, an]) => `<button type="button" data-anzeige="${k}" class="${an ? 'an' : ''}" aria-pressed="${an}">${an ? '✓ ' : ''}${t}</button>`).join('');
+  $('anzeige').innerHTML = schalter.map(([k, t, an]) => `<button type="button" data-anzeige="${k}" class="${an ? 'an' : ''}" aria-pressed="${an}">${an ? '✓ ' : ''}${k === 'schwerpunkt' ? `${SCHWERPUNKT_SVG(14)} ` : ''}${t}</button>`).join('');
 }
 function zeigeAchsbox() {
   const box = $('achsbox');
@@ -1059,18 +1059,12 @@ function zeigeAchsbox() {
   } else html += achsen.map((a) => zeile(a.nr, a.last, a.max)).join('');
   const ok = achs.achsen.every((x) => x.ok);
   box.innerHTML = `<div class="kopf"><span>Achslasten ${ok ? '<span class="gut">✓</span>' : '<span class="schlecht">✗</span>'}</span>
-    <span class="knoepfchen"><button type="button" data-sp class="${zeigeSchwerpunkt ? 'an' : ''}" title="Schwerpunkt ${zeigeSchwerpunkt ? 'ausblenden' : 'einblenden'}" aria-pressed="${zeigeSchwerpunkt}">${SCHWERPUNKT_SVG(16)}</button><button type="button" data-lvp title="Lastverteilungsplan" aria-label="Lastverteilungsplan">ⓘ</button><span>${box.classList.contains('zu-klein') ? '▸' : '▾'}</span></span></div><div class="inhalt">${html}</div>`;
+    <span class="knoepfchen"><button type="button" data-lvp title="Lastverteilungsplan" aria-label="Lastverteilungsplan">ⓘ</button><span>${box.classList.contains('zu-klein') ? '▸' : '▾'}</span></span></div><div class="inhalt">${html}</div>`;
 }
 // Antippen klappt das Kästchen ein und aus; bleibt im Browser gespeichert
 try { if (localStorage.getItem('lasi3d-achsbox') === 'zu') document.getElementById('achsbox').classList.add('zu-klein'); } catch { /* egal */ }
 document.getElementById('achsbox').addEventListener('click', (ev) => {
   const box = document.getElementById('achsbox');
-  if (ev.target.closest('[data-sp]')) {
-    zeigeSchwerpunkt = !zeigeSchwerpunkt;
-    try { localStorage.setItem('lasi3d-schwerpunkt', zeigeSchwerpunkt ? 'an' : 'aus'); } catch { /* egal */ }
-    aktualisiere();
-    return;
-  }
   if (ev.target.closest('[data-lvp]')) {
     oeffneBlatt(`<h3 id="blatt-titel">Lastverteilungsplan</h3>${achslastBlock()}${fuss(false)}`);
     return;

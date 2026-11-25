@@ -333,9 +333,9 @@ pruefe((await seite.textContent('#achsbox')).includes('Achslasten') && (await se
 await seite.selectOption('#fahrzeug', 'sattel'); await seite.click('#beispiel'); await kurz();
 const achsText = await seite.textContent('#achsbox');
 pruefe(['Zugmaschine', 'Auflieger', 'Zapfen', '⊙'].every((t) => achsText.includes(t)), 'Sattelzug: Zugmaschine, Königszapfen und Aufliegerachsen 1–3');
-await seite.click('#achsbox [data-sp]'); await kurz();
+await schalte('schwerpunkt');
 pruefe(!(await seite.textContent('#marken')).includes('Schwerpunkt'), 'Schwerpunkt lässt sich ausblenden');
-await seite.click('#achsbox [data-sp]'); await kurz();
+await schalte('schwerpunkt');
 pruefe((await seite.textContent('#marken')).includes('Schwerpunkt'), 'und wieder einblenden');
 await seite.click('#achsbox [data-lvp]'); await kurz();
 pruefe(await seite.isVisible('#blatt svg.plan') && (await seite.textContent('#blatt-titel')) === 'Lastverteilungsplan', 'ⓘ öffnet den Lastverteilungsplan');
