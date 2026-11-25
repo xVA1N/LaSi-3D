@@ -15,6 +15,38 @@ const PAARUNGEN = [
   ['eigen', 'Eigener Wert …'],
 ];
 
+
+// Skizze für den Kipp-Rechner: welche Maße gemeint sind
+const KIPP_BILD = `<figure class="skizze">
+<svg viewBox="0 0 345 190" role="img" aria-label="Beispiel: Schwerpunkthöhe, Breite und Länge der Ladung">
+  <defs><marker id="pf" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0 10 5 0 10z" fill="currentColor"/></marker></defs>
+  <g class="t"><text x="85" y="14" text-anchor="middle">Von der Seite</text><text x="255" y="14" text-anchor="middle">Von hinten</text></g>
+  <!-- Seitenansicht: Länge -->
+  <line class="boden" x1="10" y1="150" x2="165" y2="150"/>
+  <rect class="last" x="40" y="40" width="90" height="110"/>
+  <path class="fahrt" d="M120 28 h35" marker-end="url(#pf)"/><text class="k" x="138" y="24" text-anchor="middle">Fahrt</text>
+  <circle class="sp" cx="85" cy="95" r="6"/><path class="sp-k" d="M85 89v12M79 95h12"/>
+  <line class="mass" x1="22" y1="150" x2="22" y2="95" marker-start="url(#pf)" marker-end="url(#pf)"/>
+  <line class="hilfs" x1="22" y1="95" x2="79" y2="95"/>
+  <text class="m" x="17" y="127" text-anchor="end">h<tspan class="klein" dy="3">S</tspan></text>
+  <line class="mass" x1="40" y1="170" x2="130" y2="170" marker-start="url(#pf)" marker-end="url(#pf)"/>
+  <text class="m" x="85" y="184" text-anchor="middle">Länge</text>
+  <circle class="kante" cx="130" cy="150" r="3.5"/>
+  <!-- Rückansicht: Breite -->
+  <line class="boden" x1="185" y1="150" x2="330" y2="150"/>
+  <rect class="last" x="225" y="40" width="60" height="110"/>
+  <circle class="sp" cx="255" cy="95" r="6"/><path class="sp-k" d="M255 89v12M249 95h12"/>
+  <line class="mass" x1="225" y1="170" x2="285" y2="170" marker-start="url(#pf)" marker-end="url(#pf)"/>
+  <text class="m" x="255" y="184" text-anchor="middle">Breite</text>
+  <line class="mass" x1="255" y1="124" x2="285" y2="124" marker-start="url(#pf)" marker-end="url(#pf)"/>
+  <text class="m klein" x="270" y="119" text-anchor="middle">b/2</text>
+  <line class="hilfs" x1="255" y1="101" x2="255" y2="150"/>
+  <circle class="kante" cx="285" cy="150" r="3.5"/><circle class="kante" cx="225" cy="150" r="3.5"/>
+  <text class="k" x="290" y="143">Kippkante</text>
+</svg>
+<figcaption>Beispiel Gitterbox: Länge 1,24 m, Breite 0,835 m, Höhe 0,97 m. Schwerpunkt bei gleichmäßiger Füllung in halber Höhe, also h<sub>S</sub> ≈ 0,49 m (bei Palette darunter: Palettenhöhe dazurechnen). Gekippt wird um die Unterkante (<b class="schlecht">●</b>); maßgebend ist der Abstand Schwerpunkt bis Kippkante, bei mittigem Schwerpunkt halbe Breite bzw. halbe Länge.</figcaption>
+</figure>`;
+
 const RECHNER = [
   {
     id: 'niederzurren', titel: 'Niederzurren', symbol: '⇵', kurz: 'Wie viele Gurte über die Ladung?',
@@ -82,7 +114,7 @@ const RECHNER = [
     },
   },
   {
-    id: 'kippen', titel: 'Kippen', symbol: '⟲', kurz: 'Kippt die Ladung bei Bremsen oder Kurve?',
+    id: 'kippen', titel: 'Kippen', symbol: '⟲', kurz: 'Kippt die Ladung bei Bremsen oder Kurve?', bild: KIPP_BILD, beispiel: { schwerpunktHoehe: 0.49, breite: 0.835, laenge: 1.24 },
     felder: [
       ['schwerpunktHoehe', 'Höhe des Schwerpunkts', 0.8, 'm', 0.05],
       ['breite', 'Breite der Ladung (quer)', 0.8, 'm', 0.05],
@@ -116,7 +148,7 @@ function zeigeRechner(r) {
   const feld = ([k, text, , art, schritt]) => (Array.isArray(art)
     ? `<label data-feld="${k}">${text}<select name="${k}">${art.map(([v, t]) => `<option value="${v}" ${String(w[k]) === v ? 'selected' : ''}>${t}</option>`).join('')}</select></label>`
     : `<label data-feld="${k}">${text}<span class="mit-einheit"><input name="${k}" type="number" inputmode="decimal" step="${schritt}" min="0" value="${w[k]}"><em>${art}</em></span></label>`);
-  $('rechner-inhalt').innerHTML = `<h1><span class="sym">${r.symbol}</span> ${r.titel}</h1><p class="unter">${r.kurz}</p>
+  $('rechner-inhalt').innerHTML = `<h1><span class="sym">${r.symbol}</span> ${r.titel}</h1><p class="unter">${r.kurz}</p>${r.bild ?? ''}${r.beispiel ? '<button type="button" id="beispiel-nehmen" class="leise beispiel-knopf">Beispiel übernehmen</button>' : ''}
     <form id="rechner-form" class="rechner-form">${r.felder.map(feld).join('')}</form><div id="rechner-ergebnis"></div>`;
   const form = $('rechner-form');
   const aktualisiere = () => {
@@ -134,6 +166,10 @@ function zeigeRechner(r) {
       <p class="hinweis">${e.info}</p>`;
   };
   form.addEventListener('input', aktualisiere);
+  $('beispiel-nehmen')?.addEventListener('click', () => {
+    for (const [k, v] of Object.entries(r.beispiel)) form.elements[k].value = v;
+    aktualisiere();
+  });
   form.addEventListener('submit', (ev) => ev.preventDefault());
   aktualisiere();
 }
