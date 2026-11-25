@@ -247,3 +247,4 @@ li.pflicht { color: #b26a00; }
 .formel.klein { white-space: nowrap; font-size: .92rem; }
 .bild .in { fill: #3a2410; font: italic 700 14px serif; }
 .icons button.an { background: #2f8a4a; color: #fff; }
+.katalog button:disabled { opacity: .55; cursor: not-allowed; } .katalog button:disabled small .schlecht { opacity: 1; font-weight: 600; }
