@@ -57,3 +57,33 @@ test('Hohe schmale Ladung kippt in der Kurve', () => {
   const { z } = fahre([rhm, turm], [], 'kurve');
   assert.ok(z[0].kipp > 0.5);
 });
+
+test('Kippt nach vorne nicht durch die Stirnwand, sondern lehnt sich an', () => {
+  const turm = kiste('t', 6.8 - 0.3 - 0.5, 0, { l: 0.6, b: 0.6, h: 2.0, masse: 300 }); // 0,5 m vor der Wand
+  const rhm = { id: 'm', typ: 'rhm', name: 'RHM', material: 'rhm', masse: 0, l: 0.6, b: 0.6, h: 0.008, x: turm.x, z: 0, drehung: 0 };
+  const { z, aus } = fahre([rhm, turm], [], 'bremsen');
+  const u = z[0];
+  // rutscht an die Wand (RHM 0,6 < 0,8) und kann dort nicht mehr kippen
+  assert.ok(Math.abs(u.x - 0.5) < 1e-9);
+  assert.ok(u.kipp < 1e-9);
+  assert.match(aus[0].was.join(), /schlägt an/);
+});
+
+test('Kippt gegen die Ladung davor, ohne zu rutschen', () => {
+  // vorne festgehaltener Turm (Formschluss an der Wand), dahinter einer mit 0,3 m Lücke auf RHM, der kippt
+  const vorn = kiste('v', 6.8 - 0.6, 0, { l: 1.2, b: 1.2, h: 2.0, masse: 2000 });
+  const turm = kiste('t', 6.8 - 1.2 - 0.3 - 0.3, 0, { l: 0.6, b: 0.6, h: 2.0, masse: 300, mu: 0.9 });
+  const { z, aus } = fahre([vorn, turm], [], 'bremsen');
+  const u = z.find((x) => x.id === 't');
+  assert.ok(u.kipp > 0.05 && Math.sin(u.kipp) * 2.0 <= 0.3 + 1e-6);
+  assert.match(aus.find((a) => a.id === 't').was.join(), /lehnt sich an/);
+});
+
+test('Höher als die Stirnwand: lehnt sich an deren Oberkante an', () => {
+  const turm = kiste('t', 6.8 - 0.3 - 0.4, 0, { l: 0.6, b: 0.8, h: 2.4, masse: 400, mu: 0.9 });
+  const r = pruefe({ objekte: [turm], gurte: [], flaeche });
+  const z = startzustand(r, { ...flaeche, wandHoehe: 1.6 }, stapeln([turm]));
+  for (const p of MANOEVER.bremsen.phasen) for (let t = 0; t < p.dauer; t += 0.02) schritt(z, p, 0.02, flaeche);
+  // Vorderfläche berührt die Wandoberkante (0,4 m vor, 1,6 m hoch): tan θ = 0,4 / 1,6
+  assert.ok(Math.abs(z[0].kipp - Math.atan(0.4 / 1.6)) < 1e-6);
+});

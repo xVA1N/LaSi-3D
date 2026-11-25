@@ -783,7 +783,7 @@ function starteFahrt(k) {
     aktualisiere();
     for (const g of objektGruppen.values()) { g.userData.basisPos = g.position.clone(); g.userData.basisQuat = g.quaternion.clone(); }
     const m = MANOEVER[k];
-    const z = startzustand(ergebnis, fahrzeug(), ergebnis.lage);
+    const z = startzustand(ergebnis, { ...fahrzeug(), wandHoehe: fahrzeug().haus ? 1.3 : 1.6 }, ergebnis.lage);
     // Gurte von Einheiten ausblenden, die bei diesem Manöver nicht halten
     const bewegt = new Set(z.filter((u) => m.phasen.some((p) => {
       const d = u.richtungen[p.r];

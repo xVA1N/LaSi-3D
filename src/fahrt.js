@@ -19,23 +19,22 @@ const ueberlapptX = (a, b) => a.x0 < b.x1 - 1e-6 && b.x0 < a.x1 - 1e-6;
 export function startzustand(ergebnis, flaeche, lage) {
   const L = flaeche.laenge / 2;
   const einheiten = ergebnis.ergebnisse.map((e) => e.einheit);
+  const wand = flaeche.wandHoehe ?? 1.6;
+  // nächstes Hindernis je Richtung: Abstand und Höhe (zum Anlehnen beim Kippen)
+  const naechstes = (liste, ohne, hoehe = Infinity) => liste.reduce((a, b) => (b.weg < a.weg ? b : a), { weg: ohne, hoehe });
   return ergebnis.ergebnisse.map((e) => {
-    const f = e.einheit.f, andere = einheiten.filter((x) => x.id !== e.id).map((x) => x.f);
-    const vor = andere.filter((o) => ueberlapptZ(o, f) && o.x0 >= f.x1 - 0.01).map((o) => o.x0 - f.x1);
-    const hinter = andere.filter((o) => ueberlapptZ(o, f) && o.x1 <= f.x0 + 0.01).map((o) => f.x0 - o.x1);
-    const links = andere.filter((o) => ueberlapptX(o, f) && o.z1 <= f.z0 + 0.01).map((o) => f.z0 - o.z1);
-    const rechts = andere.filter((o) => ueberlapptX(o, f) && o.z0 >= f.z1 - 0.01).map((o) => o.z0 - f.z1);
+    const f = e.einheit.f, andere = einheiten.filter((x) => x.id !== e.id).map((x) => ({ ...x.f, hoehe: x.hoehe }));
+    const vor = naechstes(andere.filter((o) => ueberlapptZ(o, f) && o.x0 >= f.x1 - 0.01).map((o) => ({ weg: o.x0 - f.x1, hoehe: o.hoehe })), L - f.x1, wand);
+    const hinter = naechstes(andere.filter((o) => ueberlapptZ(o, f) && o.x1 <= f.x0 + 0.01).map((o) => ({ weg: f.x0 - o.x1, hoehe: o.hoehe })), Infinity);
+    const links = naechstes(andere.filter((o) => ueberlapptX(o, f) && o.z1 <= f.z0 + 0.01).map((o) => ({ weg: f.z0 - o.z1, hoehe: o.hoehe })), Infinity);
+    const rechts = naechstes(andere.filter((o) => ueberlapptX(o, f) && o.z0 >= f.z1 - 0.01).map((o) => ({ weg: o.z0 - f.z1, hoehe: o.hoehe })), Infinity);
     const wurzel = e.einheit.mitglieder[0];
     return {
       id: e.id, f, mu: e.einheit.mu, hoehe: e.einheit.hoehe, basisY: lage?.get(wurzel.id)?.y ?? 0,
       richtungen: e.richtungen, kippen: e.kippen, rollt: e.einheit.rollt ?? [],
       radius: e.einheit.rund ? (f.z1 - f.z0) / 2 : 0,
-      frei: {
-        vor: Math.max(0, Math.min(L - f.x1, ...vor)),
-        hinter: hinter.length ? Math.max(0, Math.min(...hinter)) : Infinity,
-        links: links.length ? Math.max(0, Math.min(...links)) : Infinity,
-        rechts: rechts.length ? Math.max(0, Math.min(...rechts)) : Infinity,
-      },
+      frei: { vor: Math.max(0, vor.weg), hinter: Math.max(0, hinter.weg), links: Math.max(0, links.weg), rechts: Math.max(0, rechts.weg) },
+      hindernisHoehe: { vorne: vor.hoehe, hinten: hinter.hoehe, links: links.hoehe, rechts: rechts.hoehe },
       x: 0, z: 0, y: 0, vx: 0, vz: 0, vy: 0, kipp: 0, kippV: 0, kippRichtung: null, roll: 0,
       faellt: false, angeschlagen: false,
     };
@@ -84,7 +83,18 @@ export function schritt(zustand, phase, dt, flaeche) {
       u.kippRichtung ??= phase.dz < 0 ? 'links' : phase.dz > 0 ? 'rechts' : phase.dx > 0 ? 'vorne' : 'hinten';
       u.kippV += 5 * dt;
     }
-    if (u.kippRichtung) u.kipp = Math.min(Math.PI / 2, u.kipp + u.kippV * dt);
+    if (u.kippRichtung) {
+      // nur so weit, wie Platz ist: Stirnwand und andere Ladung halten die Kante auf (beim Herunterfallen nicht)
+      const platz = { vorne: u.frei.vor - u.x, hinten: u.frei.hinter + u.x, links: u.frei.links + u.z, rechts: u.frei.rechts - u.z }[u.kippRichtung];
+      const hoch = Math.max(u.hoehe - u.basisY, 0.01);
+      // ist das Hindernis niedriger als die Ladung, lehnt sie sich an dessen Oberkante an
+      const hindernis = (u.hindernisHoehe[u.kippRichtung] ?? Infinity) - u.basisY;
+      const grenze = u.faellt || !Number.isFinite(platz) ? Math.PI / 2
+        : hindernis > 0 && hindernis < hoch ? Math.atan(Math.max(0, platz) / hindernis)
+          : Math.asin(Math.min(1, Math.max(0, platz) / hoch));
+      u.kipp = Math.min(grenze, u.kipp + u.kippV * dt);
+      if (u.kipp >= grenze - 1e-9 && grenze < Math.PI / 2) { u.kippV = 0; u.angelehnt = true; }
+    }
   }
 }
 
@@ -94,6 +104,7 @@ export function auswertung(zustand) {
     const weg = Math.hypot(u.x, u.z);
     const was = [];
     if (u.faellt) was.push('fällt herunter');
+    else if (u.angelehnt && u.kipp > 0.02) was.push(`kippt und lehnt sich ${u.kippRichtung === 'vorne' ? 'an Stirnwand bzw. Ladung davor' : 'an die Ladung daneben'}`);
     else if (u.kipp > 0.5) was.push('kippt um');
     if (!u.faellt && weg > 0.05) was.push(`${u.radius > 0 && Math.abs(u.roll) > 0.3 ? 'rollt' : 'rutscht'} ${weg.toLocaleString('de-DE', { maximumFractionDigits: 1 })} m${u.angeschlagen ? ' und schlägt an' : ''}`);
     return { id: u.id, was };
