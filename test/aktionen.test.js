@@ -77,3 +77,17 @@ test('Neuer Gurt sucht eine freie Stelle', () => {
   assert.equal(freierGurtX([{ x: 0 }], u), -0.3);
   assert.equal(freierGurtX([{ x: 0 }, { x: -0.3 }], u), 0.3);
 });
+
+test('EPAL-Stellplätze: Sattel 33 längs, 34 quer; kleiner Lkw 15 / 14', async () => {
+  const { stellplaetze, platzFrei } = await import('../src/aktionen.js');
+  const sattel = { laenge: 13.6, breite: 2.48 }, klein = { laenge: 6.2, breite: 2.4 };
+  assert.equal(stellplaetze(sattel, 'laengs').length, 33);
+  assert.equal(stellplaetze(sattel, 'quer').length, 34);
+  assert.equal(stellplaetze(klein, 'laengs').length, 15);
+  assert.equal(stellplaetze(klein, 'quer').length, 14);
+  const erster = stellplaetze(sattel, 'laengs')[0];
+  assert.deepEqual([erster.x, erster.z, erster.drehung], [6.2, -0.8, 0]); // an der Stirnwand, links
+  const belegt = [palette('p', 6.2, -0.8)];
+  assert.equal(platzFrei(erster, belegt), false);
+  assert.equal(platzFrei(stellplaetze(sattel, 'laengs')[1], belegt), true);
+});

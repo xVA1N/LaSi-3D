@@ -152,3 +152,15 @@ li.pflicht { color: #b26a00; }
   .oben-links { max-width: calc(100% - 205px); }
   .status { font-size: .8rem; }
 }
+
+.platzleiste .kopf { flex-direction: row; justify-content: space-between; align-items: baseline; }
+.platzleiste .chips { margin-bottom: 4px; }
+.platzleiste p.werte { margin: 4px 0 8px; font-size: .78rem; }
+.platzleiste .knoepfe { margin: 0; }
+
+.platzleiste { padding: 8px 10px; }
+.platzleiste .platzzeile { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
+.platzleiste .platzzeile + .platzzeile { margin-top: 6px; }
+.platzleiste .platzzeile .werte { flex: 1; font-size: .78rem; min-width: 0; }
+.platzleiste .chips button { padding: 5px 10px; }
+.platzleiste button { padding: 6px 10px; font-size: .85rem; }

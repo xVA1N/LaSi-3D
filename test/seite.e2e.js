@@ -195,7 +195,7 @@ pruefe(Math.abs(zwischendurch - x4) > 0.1 && Math.abs((await objektById(box)).x 
 await seite.selectOption('#fahrzeug', 'sattel'); await seite.click('#beispiel'); await kurz();
 await seite.mouse.click(5, 300); await kurz();
 await seite.click('#palette-neu'); await kurz();
-pruefe((await status()).includes('nicht gesichert') && (await seite.textContent('#ergebnis')).includes('Europalette, leer'), 'Leere Palette gilt als ungesicherte Ladung');
+pruefe((await status()).includes('nicht gesichert') && (await seite.textContent('#ergebnis')).includes('EPAL, leer'), 'Leere Palette gilt als ungesicherte Ladung');
 await seite.click('[data-aktion="hochkant"]'); await kurz();
 pruefe((await status()).includes('lose Teile') && (await seite.textContent('#leiste-status')).includes('ungesichert'), 'Lose Hochkant-Palette wird gemeldet');
 await seite.click('[data-aktion="loeschen"]'); await kurz();
@@ -333,6 +333,26 @@ await seite.evaluate((id) => window.lasi.setze(id, { masse: 1500 }), fass.id); a
 const ach = await seite.evaluate(() => window.lasi.achslasten());
 pruefe(ach.achsen.some((a) => !a.ok) && (await status()).includes('Achslast'), 'Überladene Achse wird gemeldet');
 pruefe((await seite.textContent('#marken')).includes('Vorderachse'), 'Überladene Achse wird in der Ansicht markiert');
+
+// EPAL-Stellplätze
+await seite.selectOption('#fahrzeug', 'sattel');
+seite.once('dialog', (d) => d.accept()); await seite.click('#leeren'); await kurz();
+pruefe((await seite.textContent('#palette-neu')).includes('+ EPAL') && (await seite.textContent('#gurt-neu')).includes('+ ZM'), 'Knöpfe heißen „+ EPAL“ und „+ ZM“');
+await seite.click('#plaetze-knopf'); await kurz();
+pruefe(await seite.isVisible('#platzleiste') && (await seite.textContent('#platzleiste')).includes('33 frei'), 'Stellplätze längs: 33 frei');
+await seite.click('#palette-neu'); await kurz();
+let ep = (await lage()).objekte.filter((o) => o.art === 'europalette');
+pruefe(ep.length === 1 && ep[0].x === 6.2 && ep[0].z === -0.8, '+ EPAL stellt auf den ersten freien Platz an der Stirnwand');
+await seite.click('[data-muster="quer"]'); await kurz();
+pruefe((await seite.textContent('#platzleiste')).match(/(\d+) frei/)[1] < 34, 'Quer: belegte Plätze zählen nicht als frei');
+await seite.click('[data-muster="laengs"]'); await kurz();
+await seite.click('[data-platz-aktion="fuellen"]'); await kurz();
+ep = (await lage()).objekte.filter((o) => o.art === 'europalette');
+pruefe(ep.length === 33 && (await seite.textContent('#platzleiste')).includes('0 frei'), '„Alle füllen“ stellt 33 EPAL');
+if (bilder) await seite.screenshot({ path: `${bilder}/plaetze.png` });
+await seite.click('[data-platz-aktion="fertig"]'); await kurz();
+pruefe(await seite.isHidden('#platzleiste'), '„Fertig“ blendet die Stellplätze aus');
+await seite.click('#beispiel'); await kurz();
 
 // Fahrt-Simulation: ungesicherte Kiste rutscht bei Vollbremsung, gesicherte Ladung bleibt
 await seite.selectOption('#fahrzeug', 'sattel'); await seite.click('#beispiel'); await kurz();

@@ -38,7 +38,7 @@ export const LADEGUT = [
 ];
 
 export const HILFSMITTEL = [
-  { art: 'europalette', typ: 'palette', name: 'Europalette', form: 'quader', material: 'holz', masse: 25, l: 1.2, b: 0.8, h: 0.144 },
+  { art: 'europalette', typ: 'palette', name: 'EPAL', form: 'quader', material: 'holz', masse: 25, l: 1.2, b: 0.8, h: 0.144 },
   { art: 'rhm', typ: 'rhm', name: 'RHM', form: 'quader', material: 'rhm', masse: 0, l: 1.2, b: 0.8, h: 0.008 },
 ];
 
