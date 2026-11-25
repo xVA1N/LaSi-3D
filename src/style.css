@@ -172,3 +172,9 @@ li.pflicht { color: #b26a00; }
 
 .sp-zeichen { vertical-align: -2px; flex: none; }
 .marke.mass .sp-zeichen { margin-right: 2px; }
+
+.ansicht button.auge { display: inline-flex; align-items: center; justify-content: center; padding: 6px 9px; }
+.ansicht button.auge.an { background: var(--knopf); color: var(--knopf-text); }
+.anzeigemenue { position: absolute; right: 12px; top: 56px; z-index: 3; background: var(--karte); border-radius: 12px; box-shadow: 0 6px 20px #0004; padding: 10px 12px; font-size: .9rem; }
+.anzeigemenue .chips { flex-direction: column; align-items: stretch; margin-top: 6px; }
+.anzeigemenue .chips button { text-align: left; }

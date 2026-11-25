@@ -24,6 +24,8 @@ async function neueSeite(optionen) {
 const seite = await neueSeite({ viewport: { width: 1280, height: 800 } });
 const status = () => seite.textContent('#status');
 const kurz = () => seite.waitForTimeout(150);
+// Anzeige-Schalter im Augen-Menü oben (öffnet das Menü bei Bedarf)
+const schalte = async (k) => { if (await seite.isHidden('#anzeigemenue')) await seite.click('#anzeige-knopf'); await seite.click(`[data-anzeige="${k}"]`); await kurz(); };
 const lage = () => seite.evaluate(() => window.lasi.zustand());
 const objektById = async (id) => (await lage()).objekte.find((o) => o.id === id);
 
@@ -47,12 +49,12 @@ pruefe((await status()).includes('✓'), 'Beispiel Sattelauflieger ist gesichert
 const reihenText = await seite.textContent('#marken');
 pruefe(['LR1', 'LR2', 'LR5'].every((r) => reihenText.includes(r)) && !reihenText.includes('LR6'), 'Ladereihen 1 bis 5 werden markiert');
 pruefe((await seite.textContent('#ergebnis')).includes('LR1'), 'Prüfung nennt die Reihe');
-await seite.click('[data-anzeige="reihen"]'); await kurz();
+await schalte('reihen');
 pruefe(!(await seite.textContent('#marken')).includes('LR1'), 'Ladereihen lassen sich ausblenden');
-await seite.click('[data-anzeige="reihen"]'); await kurz();
-await seite.click('[data-anzeige="achsen"]'); await kurz();
+await schalte('reihen');
+await schalte('achsen');
 pruefe((await seite.textContent('#achsbox')) === '' && !(await seite.textContent('#marken')).includes('⊙'), 'Achslasten lassen sich ausblenden');
-await seite.click('[data-anzeige="achsen"]'); await kurz();
+await schalte('achsen');
 pruefe((await seite.textContent('#achsbox')).includes('Achslasten') && (await seite.textContent('#marken')).includes('LR1'), 'und beides wieder einblenden');
 
 // Ladegut über den Katalog

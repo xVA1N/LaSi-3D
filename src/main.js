@@ -1847,6 +1847,17 @@ $('nutzlast').addEventListener('input', () => { const v = +$('nutzlast').value; 
 zeigeNutzlast();
 $('ladegut-neu').addEventListener('click', oeffneKatalog);
 $('fahrt-knopf').addEventListener('click', oeffneFahrtWahl);
+// Augen-Knopf oben: Menü mit den Anzeige-Schaltern
+$('anzeige-knopf').addEventListener('click', (ev) => {
+  ev.stopPropagation();
+  const menue = $('anzeigemenue');
+  menue.hidden = !menue.hidden;
+  $('anzeige-knopf').setAttribute('aria-expanded', String(!menue.hidden));
+  $('anzeige-knopf').classList.toggle('an', !menue.hidden);
+});
+document.addEventListener('pointerdown', (ev) => {
+  if (!$('anzeigemenue').hidden && !ev.target.closest('#anzeigemenue, #anzeige-knopf')) { $('anzeigemenue').hidden = true; $('anzeige-knopf').classList.remove('an'); }
+});
 $('anzeige').addEventListener('click', (ev) => {
   const k = ev.target.closest('[data-anzeige]')?.dataset.anzeige;
   if (!k) return;
