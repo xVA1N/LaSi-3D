@@ -586,21 +586,56 @@ function baueReihen() {
 }
 
 // Schwerpunkt der Ladung und überladene Achsen (rot um die Räder)
+// Schwerpunkt-Kennzeichen (Verpackungskennzeichen nach ISO 7000-0627): Kreis aus vier Bogenstücken mit Fadenkreuz
+function zeichneSchwerpunktZeichen(ctx, g, farbe = '#000') {
+  const c = g / 2, r = g * 0.27, dicke = g * 0.095;
+  ctx.strokeStyle = farbe;
+  ctx.lineWidth = dicke;
+  ctx.lineCap = 'butt';
+  for (let k = 0; k < 4; k++) {
+    const mitte = (k * Math.PI) / 2;
+    ctx.beginPath();
+    ctx.arc(c, c, r, mitte - Math.PI * 0.19, mitte + Math.PI * 0.19);
+    ctx.stroke();
+  }
+  ctx.lineWidth = g * 0.04;
+  ctx.beginPath();
+  ctx.moveTo(c - g * 0.42, c); ctx.lineTo(c + g * 0.42, c);
+  ctx.moveTo(c, c - g * 0.42); ctx.lineTo(c, c + g * 0.42);
+  ctx.stroke();
+}
+const SCHWERPUNKT_SVG = (groesse = 16) => `<svg class="sp-zeichen" width="${groesse}" height="${groesse}" viewBox="0 0 100 100" aria-hidden="true"><g fill="none" stroke="currentColor"><path stroke-width="14" d="M36.5 26.6A27 27 0 0 1 63.5 26.6M73.4 36.5A27 27 0 0 1 73.4 63.5M63.5 73.4A27 27 0 0 1 36.5 73.4M26.6 63.5A27 27 0 0 1 26.6 36.5"/><path stroke-width="6" d="M6 50H94M50 6V94"/></g></svg>`;
+let schwerpunktTextur = null;
+function spTextur() {
+  if (schwerpunktTextur) return schwerpunktTextur;
+  const g = 256, leinwand = document.createElement('canvas');
+  leinwand.width = leinwand.height = g;
+  const ctx = leinwand.getContext('2d');
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, g, g);
+  ctx.strokeStyle = '#000';
+  ctx.lineWidth = 6;
+  ctx.strokeRect(3, 3, g - 6, g - 6);
+  zeichneSchwerpunktZeichen(ctx, g);
+  schwerpunktTextur = new THREE.CanvasTexture(leinwand);
+  schwerpunktTextur.colorSpace = THREE.SRGBColorSpace;
+  return schwerpunktTextur;
+}
+
 function baueAchslast() {
   const { breite: B, hoehe: H } = fahrzeug();
   const sp = achs.schwerpunkt;
   if (sp.masse > 0 && zeigeSchwerpunkt) {
-    ladungGruppe.add(kasten(0.02, 0.6, 0.02, mat(0x1d2420), sp.x, H + 0.3, sp.z));
-    const scheibe = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.012, 32), mat(0xffffff));
-    scheibe.position.set(sp.x, H + 0.006, sp.z);
-    ladungGruppe.add(scheibe);
-    for (const w of [0, Math.PI / 2]) {
-      const viertel = new THREE.Mesh(new THREE.CylinderGeometry(0.161, 0.161, 0.014, 32, 1, false, w, Math.PI / 2), mat(0xd32f2f));
-      viertel.position.set(sp.x, H + 0.007, sp.z);
-      const gegen = viertel.clone();
-      gegen.rotation.y = Math.PI;
-      ladungGruppe.add(viertel, gegen);
-    }
+    // Aufkleber flach auf der Ladefläche und ein Schild darüber, das immer zur Kamera zeigt
+    const aufkleber = new THREE.Mesh(new THREE.PlaneGeometry(0.42, 0.42).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: spTextur() }));
+    aufkleber.position.set(sp.x, H + 0.006, sp.z);
+    ladungGruppe.add(aufkleber);
+    ladungGruppe.add(kasten(0.02, 0.9, 0.02, mat(0x1d2420), sp.x, H + 0.45, sp.z));
+    const schild = new THREE.Sprite(new THREE.SpriteMaterial({ map: spTextur(), depthTest: false }));
+    schild.scale.set(0.45, 0.45, 1);
+    schild.position.set(sp.x, H + 1.1, sp.z);
+    schild.renderOrder = 9;
+    ladungGruppe.add(schild);
   }
   const rot = mat(0xe53935, { transparent: true, opacity: 0.35, depthWrite: false });
   for (const a of achs.achsen) if (!a.ok) for (const x of a.raeder) ladungGruppe.add(kasten(1.15, 1.15, B + 0.2, rot, x, 0.55, 0));
@@ -693,7 +728,7 @@ function baueMarken() {
     marke(uebermass.zuBreit ? 'warnung' : 'mass', `seitlich ${laenge(seitlich)} · Breite ${zahl(uebermass.breite, 2)} m`,
       new THREE.Vector3(teil.x, H + ergebnis.lage.get(teil.id).y + teil.h, rechts ? f.z1 : f.z0));
   }
-  if (achs.schwerpunkt.masse > 0 && zeigeSchwerpunkt) marke('mass', '⊕ Schwerpunkt', new THREE.Vector3(achs.schwerpunkt.x, H + 0.6, achs.schwerpunkt.z));
+  if (achs.schwerpunkt.masse > 0 && zeigeSchwerpunkt && ansicht === '3d') marke('mass', `${SCHWERPUNKT_SVG(14)} Schwerpunkt`, new THREE.Vector3(achs.schwerpunkt.x, H + 1.45, achs.schwerpunkt.z));
   for (const a of achs.achsen) if (!a.ok) marke('warnung', `${a.name}: ${zahl(a.last / 1000, 1)} t`, new THREE.Vector3(a.x, 1.3, B / 2));
   for (const a of einzelachsen()) marke(`achsnr ${a.last > a.max + 1e-6 ? 'zu' : ''}`, a.nr, new THREE.Vector3(a.x, 0.5, B / 2 + 0.05));
   if (achs.zapfen) marke('achsnr zapfen', '⊙', new THREE.Vector3(achs.zapfen.x, H - 0.3, B / 2 + 0.05));
@@ -1010,7 +1045,7 @@ function zeigeAchsbox() {
   } else html += achsen.map((a) => zeile(a.nr, a.last, a.max)).join('');
   const ok = achs.achsen.every((x) => x.ok);
   box.innerHTML = `<div class="kopf"><span>Achslasten ${ok ? '<span class="gut">✓</span>' : '<span class="schlecht">✗</span>'}</span>
-    <span class="knoepfchen"><button type="button" data-sp class="${zeigeSchwerpunkt ? 'an' : ''}" title="Schwerpunkt ${zeigeSchwerpunkt ? 'ausblenden' : 'einblenden'}" aria-pressed="${zeigeSchwerpunkt}">⊕</button><button type="button" data-lvp title="Lastverteilungsplan" aria-label="Lastverteilungsplan">ⓘ</button><span>${box.classList.contains('zu-klein') ? '▸' : '▾'}</span></span></div><div class="inhalt">${html}</div>`;
+    <span class="knoepfchen"><button type="button" data-sp class="${zeigeSchwerpunkt ? 'an' : ''}" title="Schwerpunkt ${zeigeSchwerpunkt ? 'ausblenden' : 'einblenden'}" aria-pressed="${zeigeSchwerpunkt}">${SCHWERPUNKT_SVG(16)}</button><button type="button" data-lvp title="Lastverteilungsplan" aria-label="Lastverteilungsplan">ⓘ</button><span>${box.classList.contains('zu-klein') ? '▸' : '▾'}</span></span></div><div class="inhalt">${html}</div>`;
 }
 // Antippen klappt das Kästchen ein und aus; bleibt im Browser gespeichert
 try { if (localStorage.getItem('lasi3d-achsbox') === 'zu') document.getElementById('achsbox').classList.add('zu-klein'); } catch { /* egal */ }

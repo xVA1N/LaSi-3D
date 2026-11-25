@@ -169,3 +169,6 @@ li.pflicht { color: #b26a00; }
 .achsbox .knoepfchen { display: inline-flex; align-items: center; gap: 4px; }
 .achsbox .knoepfchen button { padding: 0; width: 22px; height: 22px; border-radius: 50%; background: var(--feld); color: var(--text); font-size: 13px; line-height: 1; }
 .achsbox .knoepfchen button.an { background: var(--knopf); color: var(--knopf-text); }
+
+.sp-zeichen { vertical-align: -2px; flex: none; }
+.marke.mass .sp-zeichen { margin-right: 2px; }
