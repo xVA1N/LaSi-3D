@@ -40,6 +40,9 @@ export const LADEGUT = [
 export const HILFSMITTEL = [
   { art: 'europalette', typ: 'palette', name: 'EPAL', form: 'quader', material: 'holz', masse: 25, l: 1.2, b: 0.8, h: 0.144 },
   { art: 'rhm', typ: 'rhm', name: 'RHM', form: 'quader', material: 'rhm', masse: 0, l: 1.2, b: 0.8, h: 0.008 },
+  // Füllmittel: Staupolster (Luftsack) füllt Lücken für den Formschluss; Sperrbalken quer in den Seitenschienen (LC in daN)
+  { art: 'staupolster', typ: 'fuell', name: 'Staupolster', form: 'quader', material: 'papier', masse: 2, l: 0.2, b: 1.2, h: 1.2, info: 'füllt Lücken bis etwa 30 cm, gibt Formschluss weiter' },
+  { art: 'sperrbalken', typ: 'fuell', name: 'Sperrbalken', form: 'quader', material: 'stahl', masse: 9, l: 0.08, b: 2.48, h: 0.08, lc: 800, info: 'quer in der Seitenschiene, hält vor- oder rückwärts bis LC 800 daN' },
 ];
 
 export const GURTTYPEN = [
