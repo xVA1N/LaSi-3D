@@ -139,7 +139,8 @@ export const F_MU_DIREKT = 0.75;
 // Zurrpunkte für Direktzurren sitzen außen am Rahmen, so weit neben der Ladefläche
 export const ZURRPUNKT_AUSSEN = 0.065;
 // Zurrpunkte am Außenrahmen: zulässige Zugkraft LC nach EN 12640 (Fahrzeug über 12 t: 2000 daN).
-// Höchstens 3 belegte Zurrpunkte je Meter Rahmen und Seite.
+// EN 12640: Mehrpunktsysteme (Zurrschienen) müssen die Kräfte an drei Positionen je Meter in derselben Richtung
+// aufnehmen – mehr als 3 belegte Positionen je Meter und Seite sind daher nicht abgedeckt.
 export const ZURRPUNKT_STANDARD = { art: 'en12640', lc: 2000 };
 export const ZURRPUNKTE_JE_METER = 3;
 /**
@@ -402,9 +403,11 @@ export function pruefe({ objekte, gurte, flaeche }) {
   // Zurrpunkte: mehrere Gurte am selben Punkt teilen sich die Zugkraft; höchstens 3 Belegungen je Meter und Seite
   const ab = (x) => (Math.round((L / 2 - x) * 100) / 100).toLocaleString('de-DE');
   const seiteName = { l: 'links', r: 'rechts' };
+  // Einzelne Zurrpunkte liegen im Raster; an einer Zurrschiene kann jede Stelle belegt werden
+  const stelle = (x) => (zp.art === 'schiene' ? Math.round(x * 20) / 20 : naechsterZurrpunkt(L, x));
   const punkte = new Map();
   for (const a of anker) {
-    const x = naechsterZurrpunkt(L, a.x), key = `${a.seite}${x}`;
+    const x = stelle(a.x), key = `${a.seite}${x}`;
     if (!punkte.has(key)) punkte.set(key, { x, seite: a.seite, auslastung: 0, gurte: new Set() });
     const p = punkte.get(key);
     p.auslastung += a.last / a.zul;
@@ -412,14 +415,14 @@ export function pruefe({ objekte, gurte, flaeche }) {
   }
   const zurrpunktInfo = [...punkte.values()];
   for (const p of zurrpunktInfo) {
-    if (p.auslastung > 1 + 1e-9) hinweise.push({ art: 'zurrpunkt', ids: [...p.gurte], text: `Zurrpunkt ${seiteName[p.seite]} bei ${ab(p.x)} m ab Stirnwand überlastet (${Math.round(p.auslastung * 100)} %): mehrere Gurte an einem Punkt.` });
+    if (p.auslastung > 1 + 1e-9) hinweise.push({ art: 'zurrpunkt', ids: [...p.gurte], text: `${zp.art === 'schiene' ? 'Schienenposition' : 'Zurrpunkt'} ${seiteName[p.seite]} bei ${ab(p.x)} m ab Stirnwand überlastet (${Math.round(p.auslastung * 100)} %): mehrere Gurte an einem Punkt.` });
   }
   for (const seite of ['l', 'r']) {
-    const xs = anker.filter((a) => a.seite === seite).map((a) => ({ x: naechsterZurrpunkt(L, a.x), gurt: a.gurt })).sort((p, q) => q.x - p.x);
+    const xs = anker.filter((a) => a.seite === seite).map((a) => ({ x: stelle(a.x), gurt: a.gurt })).sort((p, q) => q.x - p.x);
     for (let i = 0; i < xs.length; i++) {
       const im = xs.filter((a) => a.x <= xs[i].x + 1e-6 && a.x >= xs[i].x - 1 - 1e-6);
       if (im.length > ZURRPUNKTE_JE_METER) {
-        hinweise.push({ art: 'zurrpunkt', ids: [...new Set(im.map((a) => a.gurt))], text: `${im.length} Gurte auf einem Meter Rahmen (${seiteName[seite]}, ${ab(xs[i].x)}–${ab(xs[i].x - 1)} m ab Stirnwand); höchstens ${ZURRPUNKTE_JE_METER} erlaubt.` });
+        hinweise.push({ art: 'zurrpunkt', ids: [...new Set(im.map((a) => a.gurt))], text: `${im.length} Gurte auf einem Meter Rahmen (${seiteName[seite]}, ${ab(xs[i].x)}–${ab(xs[i].x - 1)} m ab Stirnwand); nach EN 12640 sind nur ${ZURRPUNKTE_JE_METER} Positionen je Meter abgedeckt.` });
         break;
       }
     }
