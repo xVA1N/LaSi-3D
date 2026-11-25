@@ -18,6 +18,11 @@
         <button type="button" data-ansicht="3d" class="an">3D</button>
         <button type="button" data-ansicht="oben">Draufsicht</button>
         <button type="button" id="fahrt-knopf" class="fahrt">▶ Fahrt</button>
+        <button type="button" id="anzeige-knopf" class="auge" aria-label="Anzeige" aria-expanded="false" title="Anzeige ein- und ausschalten"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M1.5 12S5.5 5 12 5s10.5 7 10.5 7-4 7-10.5 7S1.5 12 1.5 12Z" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="3.2" fill="currentColor"/></svg></button>
+      </div>
+      <div id="anzeigemenue" class="anzeigemenue" hidden>
+        <b>Anzeige</b>
+        <div class="chips" id="anzeige" role="group" aria-label="Anzeige ein- und ausschalten"></div>
       </div>
       <div id="fahrtband" class="fahrtband" hidden aria-live="polite"></div>
       <div id="platzleiste" class="leiste platzleiste" hidden></div>
@@ -51,11 +56,6 @@
           <button id="plaetze-knopf" type="button" class="leise">▦ Stellplätze</button>
         </div>
         <p class="tipp">Neues erscheint an der nächsten freien Stelle und ist gleich ausgewählt. Antippen wählt aus, das ausgewählte (gelbe) Teil lässt sich ziehen. Andere Teile bleiben beim Wischen und Zoomen liegen. In der Draufsicht schiebt ein Finger die Ansicht, zwei Finger zoomen.</p>
-      </section>
-
-      <section class="block">
-        <h2>Anzeige</h2>
-        <div class="chips" id="anzeige" role="group" aria-label="Anzeige ein- und ausschalten"></div>
       </section>
 
       <section class="block">
