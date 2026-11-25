@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { pruefe, fussabdruck, fugenReibung, rechenkraftDaN, kopfLage, ladereihen, naechsterZurrpunkt, STIRNWAND_KRAFT_N, MU_RHM, ZURRPUNKT_AUSSEN } from './modell.js';
 import { FAHRZEUGE, LADEGUT, HILFSMITTEL, GURTTYPEN, MATERIALIEN, beispiel } from './daten.js';
-import { bewegGruppe, vereinigung, anWand, verschiebe, abstandVorne, unterlage, setzeUnterlage, freierGurtX, stellplaetze, platzFrei, UEBERSTAND_MAX } from './aktionen.js';
+import { bewegGruppe, vereinigung, anWand, verschiebe, abstandVorne, unterlage, setzeUnterlage, freierGurtX, stellplaetze, platzFrei, stapelPlatz, UEBERSTAND_MAX } from './aktionen.js';
 import { pruefeUebermass, GRENZEN } from './uebermass.js';
 import { pruefeAchslasten, lastverteilungsplan } from './achslast.js';
 import { MANOEVER, startzustand, schritt, auswertung } from './fahrt.js';
@@ -1183,7 +1183,7 @@ function fuehreAus(aktion) {
       const neu = new Map(gruppe.map((a) => [a.id, { ...a, id: neueId('o') }]));
       const kopien = [...neu.values()];
       const u = vereinigung(kopien);
-      const ziel = freieStelle(u.x1 - u.x0, u.z1 - u.z0);
+      const ziel = freieStelle(u.x1 - u.x0, u.z1 - u.z0) ?? { x: 0, z: 0 };
       for (const k of kopien) { k.x += ziel.x - (u.x0 + u.x1) / 2; k.z += ziel.z - (u.z0 + u.z1) / 2; }
       zustand.objekte.push(...kopien);
       auswahl = { art: 'objekt', id: neu.get(o.id).id };
@@ -1611,13 +1611,13 @@ function freieStelle(lx, lz) {
       if (!andere.some((a) => f.x0 < a.x1 - 1e-6 && a.x0 < f.x1 - 1e-6 && f.z0 < a.z1 - 1e-6 && a.z0 < f.z1 - 1e-6)) return { x: Math.round((x - lx / 2) * 1000) / 1000, z };
     }
   }
-  return { x: 0, z: 0 };
+  return null; // nirgends frei
 }
 function neuesObjekt(vorlage) {
   const o = { typ: 'ladung', ...vorlage, id: neueId('o'), x: 0, z: 0, drehung: 0, mu: 0 };
   const sel = gewaehltesObjekt();
   if (o.typ === 'ladung' && sel && sel.typ !== 'ladung') { o.x = sel.x; o.z = sel.z; o.drehung = sel.drehung; }
-  else { const p = freieStelle(o.l, o.b); o.x = p.x; o.z = p.z; }
+  else { const p = freieStelle(o.l, o.b) ?? { x: 0, z: 0 }; o.x = p.x; o.z = p.z; }
   zustand.objekte.push(o);
   auswahl = { art: 'objekt', id: o.id };
   aendere();
@@ -1804,10 +1804,17 @@ $('fahrtband').addEventListener('click', (ev) => {
   if (a === 'andere') { beendeFahrt(); oeffneFahrtWahl(); }
   if (a === 'ende') beendeFahrt();
 });
+// + EPAL: freier Stellplatz, sonst freie Stelle; ist alles voll, oben auf den ersten EPAL-Stapel (bis 4 m Gesamthöhe)
 $('palette-neu').addEventListener('click', () => {
   const frei = freiePlaetze()[0];
-  if (frei) { const o = neueEpal(frei); auswahl = platzMuster ? null : { art: 'objekt', id: o.id }; aendere(); zeigeImBild(o.x); }
-  else neuesObjekt(epalVorlage());
+  const fertig = (o) => { auswahl = platzMuster ? null : { art: 'objekt', id: o.id }; aendere(); zeigeImBild(o.x); };
+  if (frei) { fertig(neueEpal(frei)); return; }
+  const v = epalVorlage();
+  if (!platzMuster && freieStelle(v.l, v.b)) { neuesObjekt(v); return; }
+  const plaetze = stellplaetze(fahrzeug(), platzMuster ?? 'laengs');
+  const stapel = stapelPlatz(plaetze, zustand.objekte, ergebnis.lage, GRENZEN.hoehe - fahrzeug().hoehe);
+  if (stapel) fertig(neueEpal(stapel.platz));
+  else neuesObjekt(v);
 });
 $('plaetze-knopf').addEventListener('click', () => { setzePlatzMuster(platzMuster ? null : 'laengs'); if (platzMuster && ansicht !== 'oben') setzeAnsicht('oben'); });
 $('platzleiste').addEventListener('click', (ev) => {
